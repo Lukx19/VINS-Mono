@@ -1,0 +1,30 @@
+<launch>
+<!--MH_01_easy MH_02_easy MH_03_medium MH_04_difficult MH_05_difficult V1_01_easy V1_02_medium V1_03_difficult V2_01_easy V2_02_medium V2_03_difficult  -->
+    <arg name="sequence_name" default = "V1_02_medium" />
+    <arg name="dataset_folder" default = "/home/osboxes/3duniversum/datasets" />
+    <env name="ROSCONSOLE_CONFIG_FILE" value="$(find vins_estimator)/launch/custom_rosconsole.conf"/>
+    <arg name="config_path" default = "$(find feature_tracker)/../config/euroc/euroc_config.yaml" />
+    <arg name="vins_path" default = "$(find feature_tracker)/../config/../" />
+    <arg name="record_file" default = "$(arg vins_path)/recordings.csv" />
+
+    <!-- SVO -->
+    <node pkg="svo_ros" type="svo_node" name="svo" clear_params="true" output="log">
+        <!-- Camera and IMU topics to subscribe to -->
+        <param name="cam0_topic" value="/cam0/image_raw" type="str" />
+        <param name="imu_topic" value="/imu0" type="str" />
+        <param name="calib_file" value="$(find svo_ros)/calib/euroc_mono_calib.yaml" type="str" />
+
+        <rosparam file="$(find svo_ros)/param/pinhole.yaml" />
+        <rosparam file="$(find svo_ros)/param/euroc_mono_imu.yaml" />
+    </node>
+
+    <node pkg="rosbag" type="play" name="player" output="log" required="true"
+        args="$(arg dataset_folder)/$(arg sequence_name).bag -r 0.5 -d 2 -s 10 --clock" />
+
+    <node name="benchmark_publisher" pkg="benchmark_publisher" type="benchmark_publisher" output="log">
+        <param name="data_name" type="string" value="$(find benchmark_publisher)/config/$(arg sequence_name)/data.csv" />
+        <param name="rec_file" type="string" value="$(arg record_file)" />
+        <remap from="~estimated_pose" to="/svo/pose_cam/0" />
+    </node>
+
+</launch>
