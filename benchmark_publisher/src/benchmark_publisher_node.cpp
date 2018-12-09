@@ -1,13 +1,15 @@
-#include <cstdio>
-#include <vector>
-#include <ros/ros.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
-#include <geometry_msgs/PoseStamped.h>
+#include <ros/ros.h>
+#include <signal.h>
+#include <std_msgs/Header.h>
 #include <tf/transform_broadcaster.h>
-#include <fstream>
+#include <cstdio>
 #include <eigen3/Eigen/Dense>
-
+#include <eigen3/Eigen/Geometry>
+#include <fstream>
+#include <vector>
 using namespace std;
 using namespace Eigen;
 
@@ -15,42 +17,40 @@ const int SKIP = 50;
 string benchmark_output_path;
 string estimate_output_path;
 template <typename T>
-T readParam(ros::NodeHandle &n, std::string name)
-{
-    T ans;
-    if (n.getParam(name, ans))
-    {
-        ROS_INFO_STREAM("Loaded " << name << ": " << ans);
-    }
-    else
-    {
-        ROS_ERROR_STREAM("Failed to load " << name);
-        n.shutdown();
-    }
-    return ans;
+T readParam(ros::NodeHandle &n, std::string name) {
+  T ans;
+  if (n.getParam(name, ans)) {
+    ROS_INFO_STREAM("Loaded " << name << ": " << ans);
+  } else {
+    ROS_ERROR_STREAM("Failed to load " << name);
+    n.shutdown();
+  }
+  return ans;
 }
 
-struct Data
-{
-    Data(FILE *f)
-    {
-        if (fscanf(f, " %lf,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", &t,
-               &px, &py, &pz,
-               &qw, &qx, &qy, &qz,
-               &vx, &vy, &vz,
-               &wx, &wy, &wz,
-               &ax, &ay, &az) != EOF)
-        {
-            t /= 1e9;
-        }
+struct Data {
+  Data(FILE *f) {
+    if (fscanf(f, " %lf,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f", &t,
+               &px, &py, &pz, &qw, &qx, &qy, &qz, &vx, &vy, &vz, &wx, &wy, &wz,
+               &ax, &ay, &az) != EOF) {
+      t /= 1e9;
     }
-    double t;
-    float px, py, pz;
-    float qw, qx, qy, qz;
-    float vx, vy, vz;
-    float wx, wy, wz;
-    float ax, ay, az;
+  }
+  double t;
+  float px, py, pz;
+  float qw, qx, qy, qz;
+  float vx, vy, vz;
+  float wx, wy, wz;
+  float ax, ay, az;
 };
+
+struct DataRec {
+  double timestamp;
+  Eigen::Vector3d trans;
+  Eigen::Quaterniond rot;
+};
+
+std::vector<DataRec> record_buffer_;
 int idx = 1;
 vector<Data> benchmark;
 
@@ -59,102 +59,155 @@ ros::Publisher pub_path;
 nav_msgs::Path path;
 
 int init = 0;
-Quaterniond baseRgt;
+Eigen::Quaterniond baseRgt;
 Vector3d baseTgt;
 tf::Transform trans;
+string rec_file;
 
-void odom_callback(const nav_msgs::OdometryConstPtr &odom_msg)
-{
-    //ROS_INFO("odom callback!");
-    if (odom_msg->header.stamp.toSec() > benchmark.back().t)
-      return;
-  
-    for (; idx < static_cast<int>(benchmark.size()) && benchmark[idx].t <= odom_msg->header.stamp.toSec(); idx++)
-        ;
-
-
-    if (init++ < SKIP)
-    {
-        baseRgt = Quaterniond(odom_msg->pose.pose.orientation.w,
-                              odom_msg->pose.pose.orientation.x,
-                              odom_msg->pose.pose.orientation.y,
-                              odom_msg->pose.pose.orientation.z) *
-                  Quaterniond(benchmark[idx - 1].qw,
-                              benchmark[idx - 1].qx,
-                              benchmark[idx - 1].qy,
-                              benchmark[idx - 1].qz).inverse();
-        baseTgt = Vector3d{odom_msg->pose.pose.position.x,
-                           odom_msg->pose.pose.position.y,
-                           odom_msg->pose.pose.position.z} -
-                  baseRgt * Vector3d{benchmark[idx - 1].px, benchmark[idx - 1].py, benchmark[idx - 1].pz};
-        return;
+void saveRecords(const std::vector<DataRec> &data) {
+  std::ofstream fout(rec_file, std::ios::app);
+  if (fout.is_open()) {
+    fout.setf(std::ios::fixed, std::ios::floatfield);
+    for (const DataRec &rec : data) {
+      fout.precision(0);
+      fout << rec.timestamp * 1e9 << ",";
+      fout.precision(5);
+      fout << rec.trans.x() << "," << rec.trans.y() << "," << rec.trans.z()
+           << "," << rec.rot.w() << "," << rec.rot.x() << "," << rec.rot.y()
+           << "," << rec.rot.z() << endl;
     }
-
-    nav_msgs::Odometry odometry;
-    odometry.header.stamp = ros::Time(benchmark[idx - 1].t);
-    odometry.header.frame_id = "world";
-    odometry.child_frame_id = "world";
-
-    Vector3d tmp_T = baseTgt + baseRgt * Vector3d{benchmark[idx - 1].px, benchmark[idx - 1].py, benchmark[idx - 1].pz};
-    odometry.pose.pose.position.x = tmp_T.x();
-    odometry.pose.pose.position.y = tmp_T.y();
-    odometry.pose.pose.position.z = tmp_T.z();
-
-    Quaterniond tmp_R = baseRgt * Quaterniond{benchmark[idx - 1].qw,
-                                              benchmark[idx - 1].qx,
-                                              benchmark[idx - 1].qy,
-                                              benchmark[idx - 1].qz};
-    odometry.pose.pose.orientation.w = tmp_R.w();
-    odometry.pose.pose.orientation.x = tmp_R.x();
-    odometry.pose.pose.orientation.y = tmp_R.y();
-    odometry.pose.pose.orientation.z = tmp_R.z();
-
-    Vector3d tmp_V = baseRgt * Vector3d{benchmark[idx - 1].vx,
-                                        benchmark[idx - 1].vy,
-                                        benchmark[idx - 1].vz};
-    odometry.twist.twist.linear.x = tmp_V.x();
-    odometry.twist.twist.linear.y = tmp_V.y();
-    odometry.twist.twist.linear.z = tmp_V.z();
-    pub_odom.publish(odometry);
-
-    geometry_msgs::PoseStamped pose_stamped;
-    pose_stamped.header = odometry.header;
-    pose_stamped.pose = odometry.pose.pose;
-    path.header = odometry.header;
-    path.poses.push_back(pose_stamped);
-    pub_path.publish(path);
+    fout.flush();
+    fout.close();
+  } else {
+    ROS_ERROR_STREAM("Cannot open file to save records " << rec_file);
+  }
 }
 
-int main(int argc, char **argv)
-{
-    ros::init(argc, argv, "benchmark_publisher");
-    ros::NodeHandle n("~");
+void termHandler(int sig) {
+  saveRecords(record_buffer_);
+  ros::shutdown();
+}
 
-    string csv_file = readParam<string>(n, "data_name");
-    std::cout << "load ground truth " << csv_file << std::endl;
-    FILE *f = fopen(csv_file.c_str(), "r");
-    if (f==NULL)
-    {
-      ROS_WARN("can't load ground truth; wrong path");
-      //std::cerr << "can't load ground truth; wrong path " << csv_file << std::endl;
-      return 0;
-    }
-    char tmp[10000];
-    if (fgets(tmp, 10000, f) == NULL)
-    {
-        ROS_WARN("can't load ground truth; no data available");
-    }
-    while (!feof(f))
-        benchmark.emplace_back(f);
-    fclose(f);
-    benchmark.pop_back();
-    ROS_INFO("Data loaded: %d", (int)benchmark.size());
+void saveCurrentPose(const std_msgs::Header &header,
+                     const geometry_msgs::Pose &pose) {
+  if (record_buffer_.size() > 50) {
+    saveRecords(record_buffer_);
+    record_buffer_.clear();
+  }
+  DataRec dt;
+  dt.rot = Eigen::Quaterniond(pose.orientation.w, pose.orientation.x,
+                              pose.orientation.y, pose.orientation.z);
+  dt.trans =
+      Eigen::Vector3d{pose.position.x, pose.position.y, pose.position.z};
+  dt.timestamp = header.stamp.toSec();
+  record_buffer_.push_back(std::move(dt));
+}
 
-    pub_odom = n.advertise<nav_msgs::Odometry>("odometry", 1000);
-    pub_path = n.advertise<nav_msgs::Path>("path", 1000);
+void pose_callback(const geometry_msgs::PoseStampedConstPtr &pose_msg) {
+  if (pose_msg->header.stamp.toSec() <= benchmark.back().t) {
+    saveCurrentPose(pose_msg->header, pose_msg->pose);
+  }
+}
 
-    ros::Subscriber sub_odom = n.subscribe("estimated_odometry", 1000, odom_callback);
-    
-    ros::Rate r(20);
-    ros::spin();
+void odom_callback(const nav_msgs::OdometryConstPtr &odom_msg) {
+  ROS_INFO("odom callback!");
+  if (odom_msg->header.stamp.toSec() <= benchmark.back().t) {
+    saveCurrentPose(odom_msg->header, odom_msg->pose.pose);
+  }
+
+  for (; idx < static_cast<int>(benchmark.size()) &&
+         benchmark[idx].t <= odom_msg->header.stamp.toSec();
+       idx++)
+    ;
+
+  if (init++ < SKIP) {
+    baseRgt = Eigen::Quaterniond(odom_msg->pose.pose.orientation.w,
+                                 odom_msg->pose.pose.orientation.x,
+                                 odom_msg->pose.pose.orientation.y,
+                                 odom_msg->pose.pose.orientation.z) *
+              Eigen::Quaterniond(benchmark[idx - 1].qw, benchmark[idx - 1].qx,
+                                 benchmark[idx - 1].qy, benchmark[idx - 1].qz)
+                  .inverse();
+    baseTgt =
+        Vector3d{odom_msg->pose.pose.position.x, odom_msg->pose.pose.position.y,
+                 odom_msg->pose.pose.position.z} -
+        baseRgt * Vector3d{benchmark[idx - 1].px, benchmark[idx - 1].py,
+                           benchmark[idx - 1].pz};
+    return;
+  }
+
+  nav_msgs::Odometry odometry;
+  odometry.header.stamp = ros::Time(benchmark[idx - 1].t);
+  odometry.header.frame_id = "world";
+  odometry.child_frame_id = "world";
+
+  Vector3d tmp_T =
+      baseTgt + baseRgt * Vector3d{benchmark[idx - 1].px, benchmark[idx - 1].py,
+                                   benchmark[idx - 1].pz};
+  odometry.pose.pose.position.x = tmp_T.x();
+  odometry.pose.pose.position.y = tmp_T.y();
+  odometry.pose.pose.position.z = tmp_T.z();
+
+  Quaterniond tmp_R =
+      baseRgt * Quaterniond{benchmark[idx - 1].qw, benchmark[idx - 1].qx,
+                            benchmark[idx - 1].qy, benchmark[idx - 1].qz};
+  odometry.pose.pose.orientation.w = tmp_R.w();
+  odometry.pose.pose.orientation.x = tmp_R.x();
+  odometry.pose.pose.orientation.y = tmp_R.y();
+  odometry.pose.pose.orientation.z = tmp_R.z();
+
+  Vector3d tmp_V =
+      baseRgt * Vector3d{benchmark[idx - 1].vx, benchmark[idx - 1].vy,
+                         benchmark[idx - 1].vz};
+  odometry.twist.twist.linear.x = tmp_V.x();
+  odometry.twist.twist.linear.y = tmp_V.y();
+  odometry.twist.twist.linear.z = tmp_V.z();
+  pub_odom.publish(odometry);
+
+  geometry_msgs::PoseStamped pose_stamped;
+  pose_stamped.header = odometry.header;
+  pose_stamped.pose = odometry.pose.pose;
+  path.header = odometry.header;
+  path.poses.push_back(pose_stamped);
+  pub_path.publish(path);
+}
+
+int main(int argc, char **argv) {
+  record_buffer_.reserve(100);
+  ros::init(argc, argv, "benchmark_publisher");
+  ros::NodeHandle n("~");
+  signal(SIGTERM, termHandler);
+  signal(SIGINT, termHandler);
+  signal(SIGKILL, termHandler);
+
+  string csv_file = readParam<string>(n, "data_name");
+  rec_file = readParam<string>(n, "rec_file");
+
+  std::cout << "load ground truth " << csv_file << std::endl;
+  FILE *f = fopen(csv_file.c_str(), "r");
+  if (f == NULL) {
+    ROS_WARN("can't load ground truth; wrong path");
+    return 0;
+  }
+  char tmp[10000];
+  if (fgets(tmp, 10000, f) == NULL) {
+    ROS_WARN("can't load ground truth; no data available");
+  }
+  while (!feof(f)) benchmark.emplace_back(f);
+  fclose(f);
+  benchmark.pop_back();
+  ROS_INFO("Data loaded: %d", (int)benchmark.size());
+
+  pub_odom = n.advertise<nav_msgs::Odometry>("odometry", 1000);
+  pub_path = n.advertise<nav_msgs::Path>("path", 1000);
+
+  ros::Subscriber sub_odom =
+      n.subscribe("estimated_odometry", 1000, odom_callback);
+
+  ros::Subscriber sub_pose = n.subscribe("estimated_pose", 1000, pose_callback);
+
+  ros::Rate r(20);
+  ros::spin();
+
+  saveRecords(record_buffer_);
 }
