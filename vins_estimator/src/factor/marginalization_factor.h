@@ -10,7 +10,7 @@
 #include "../utility/utility.h"
 #include "../utility/tic_toc.h"
 
-const int NUM_THREADS = 4;
+// const int NUM_THREADS = 2;
 
 struct ResidualBlockInfo
 {
@@ -18,7 +18,6 @@ struct ResidualBlockInfo
         : cost_function(_cost_function), loss_function(_loss_function), parameter_blocks(_parameter_blocks), drop_set(_drop_set) {}
 
     void Evaluate();
-
     ceres::CostFunction *cost_function;
     ceres::LossFunction *loss_function;
     std::vector<double *> parameter_blocks;
@@ -46,6 +45,7 @@ struct ThreadsStruct
 class MarginalizationInfo
 {
   public:
+    MarginalizationInfo();
     ~MarginalizationInfo();
     int localSize(int size) const;
     int globalSize(int size) const;
@@ -68,7 +68,8 @@ class MarginalizationInfo
     Eigen::MatrixXd linearized_jacobians;
     Eigen::VectorXd linearized_residuals;
     const double eps = 1e-8;
-
+  private:
+    size_t id_;
 };
 
 class MarginalizationFactor : public ceres::CostFunction

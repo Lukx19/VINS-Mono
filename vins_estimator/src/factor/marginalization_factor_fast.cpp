@@ -1,4 +1,4 @@
-#include "marginalization_factor.h"
+#include "marginalization_factor_fast.h"
 #include "../utility/timer.h"
 #include "../utility/utility.h"
 #include <chrono>
@@ -113,27 +113,6 @@ void MarginalizationInfo::addResidualBlockInfo(ResidualBlockInfo *residual_block
         parameter_block_idx[reinterpret_cast<long>(addr)] = 0;
     }
 }
-
-// void MarginalizationInfo::addResidualBlockInfo(const ResidualBlockInfo & residual_block_info)
-// {
-//     factors.emplace_back(residual_block_info);
-
-//     std::vector<double *> &parameter_blocks = residual_block_info->parameter_blocks;
-//     std::vector<int> parameter_block_sizes = residual_block_info->cost_function->parameter_block_sizes();
-
-//     for (int i = 0; i < static_cast<int>(residual_block_info->parameter_blocks.size()); i++)
-//     {
-//         double *addr = parameter_blocks[i];
-//         int size = parameter_block_sizes[i];
-//         parameter_block_size[reinterpret_cast<long>(addr)] = size;
-//     }
-
-//     for (int i = 0; i < static_cast<int>(residual_block_info->drop_set.size()); i++)
-//     {
-//         double *addr = parameter_blocks[residual_block_info->drop_set[i]];
-//         parameter_block_idx[reinterpret_cast<long>(addr)] = 0;
-//     }
-// }
 
 void MarginalizationInfo::preMarginalize()
 {
@@ -292,72 +271,60 @@ void MarginalizationInfo::marginalize()
     ROS_INFO("thread summing up costs %f ms", t_summing.toc());
     // ROS_INFO("A diff %f , b diff %f ", (A - tmp_A).sum(), (b - tmp_b).sum());
 
-    Eigen::MatrixXd Amm_inv;
-    // TODO
+        // std::chrono::milliseconds ms = std::chrono::duration_cast< std::chrono::milliseconds >(
+    // std::chrono::system_clock::now().time_since_epoch());
+    // std::string filename = std::to_string(ms.count()) +"_"+ std::to_string(m)+"_"+std::to_string(n)+"_Amatrix.png";
+    // saveSparsityVis(Amm,filename);
+
+    //TODO
     TicToc t_sparse;
     Eigen::SimplicialLDLT<Eigen::SparseMatrix<double> > solver;
     solver.compute(A.block(0, 0, m, m).sparseView());
     Eigen::SparseMatrix<double> I(m,m);
     I.setIdentity();
-    Amm_inv = Eigen::MatrixXd(solver.solve(I));
+    Eigen::MatrixXd Amm_inv = Eigen::MatrixXd(solver.solve(I));
     ROS_INFO("solving up sparse costs %f ms", t_sparse.toc());
 
+    // TicToc t_solving;
+    // Timer::start("marginalization_lin_system_solve");
+    // Eigen::MatrixXd Amm = 0.5 * (A.block(0, 0, m, m) + A.block(0, 0, m, m).transpose());
 
+    // Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(Amm);
 
-    TicToc t_solving;
-    Timer::start("marginalization_lin_system_solve");
-    Eigen::MatrixXd Amm = 0.5 * (A.block(0, 0, m, m) + A.block(0, 0, m, m).transpose());
-
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(Amm);
-
-    //ROS_ASSERT_MSG(saes.eigenvalues().minCoeff() >= -1e-4, "min eigenvalue %f", saes.eigenvalues().minCoeff());
-    // Amm_inv = saes.eigenvectors() * Eigen::VectorXd((saes.eigenvalues().array() > eps).select(saes.eigenvalues().array().inverse(), 0)).asDiagonal() * saes.eigenvectors().transpose();
-
-    // ROS_INFO("solving up costs 1 %f ms", t_solving.toc());
+    // //ROS_ASSERT_MSG(saes.eigenvalues().minCoeff() >= -1e-4, "min eigenvalue %f", saes.eigenvalues().minCoeff());
+    // Eigen::MatrixXd Amm_inv = saes.eigenvectors() * Eigen::VectorXd((saes.eigenvalues().array() > eps).select(saes.eigenvalues().array().inverse(), 0)).asDiagonal() * saes.eigenvectors().transpose();
     // Timer::stop("marginalization_lin_system_solve");
-    // printf("error1: %f\n", (Amm * Amm_inv - Eigen::MatrixXd::Identity(m, m)).sum());
+    // ROS_INFO("solving up costs %f ms", t_solving.toc());
+    //printf("error1: %f\n", (Amm * Amm_inv - Eigen::MatrixXd::Identity(m, m)).sum());
 
-    // std::chrono::milliseconds ms = std::chrono::duration_cast< std::chrono::milliseconds >(
-    // std::chrono::system_clock::now().time_since_epoch());
-    // std::string filename = std::to_string(ms.count()) +"_"+ std::to_string(m)+"_"+std::to_string(n)+"_Amatrix.png";
-    // // Eigen::MatrixXd Asss = A.block(0, 0, m, m);
-    // saveSparsityVis(Amm_inv,filename);
+
+    Eigen::VectorXd bmm = b.segment(0, m);
+    Eigen::MatrixXd Amr = A.block(0, m, m, n);
+    Eigen::MatrixXd Arm = A.block(m, 0, n, m);
+    Eigen::MatrixXd Arr = A.block(m, m, n, n);
+    Eigen::VectorXd brr = b.segment(m, n);
+    A = Arr - Arm * Amm_inv * Amr;
+    b = brr - Arm * Amm_inv * bmm;
 
     Timer::start("marginalization_lin_system_solve2");
-    Timer::start("marginalization_lin_system_solveAb");
-    TicToc t_solvingAb;
-    // auto  bmm = b.segment(0, m);
-    // auto  Amr = A.block(0, m, m, n);
-    // auto  Arm = A.block(m, 0, n, m);
-    // auto  Arr = A.block(m, m, n, n);
-    // auto  brr = b.segment(m, n);
-    Eigen::MatrixXd A_left = A.block(m, 0, n, m) * Amm_inv;
-    Eigen::MatrixXd A_temp = A_left * A.block(0, m, m, n);
-    Eigen::MatrixXd A_mod = A.block(m, m, n, n) - A_temp;
-    Eigen::VectorXd b_temp =  A_left * b.segment(0, m);
-    Eigen::VectorXd b_mod = b.segment(m, n) - b_temp;
-    Timer::stop("marginalization_lin_system_solveAb");
-    ROS_INFO("solving up Ab costs %f ms", t_solvingAb.toc());
-
     TicToc t_solving2;
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes2(A_mod);
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes2(A);
     Eigen::VectorXd S = Eigen::VectorXd((saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array(), 0));
     Eigen::VectorXd S_inv = Eigen::VectorXd((saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array().inverse(), 0));
-
-    ROS_INFO("solving up costs2 %f ms", t_solving2.toc());
+    ROS_INFO("solving up costs %f ms", t_solving2.toc());
     Timer::stop("marginalization_lin_system_solve2");
 
     Eigen::VectorXd S_sqrt = S.cwiseSqrt();
     Eigen::VectorXd S_inv_sqrt = S_inv.cwiseSqrt();
 
     linearized_jacobians = S_sqrt.asDiagonal() * saes2.eigenvectors().transpose();
-    linearized_residuals = S_inv_sqrt.asDiagonal() * saes2.eigenvectors().transpose() * b_mod;
+    linearized_residuals = S_inv_sqrt.asDiagonal() * saes2.eigenvectors().transpose() * b;
     //std::cout << A << std::endl
     //          << std::endl;
     //std::cout << linearized_jacobians << std::endl;
     //printf("error2: %f %f\n", (linearized_jacobians.transpose() * linearized_jacobians - A).sum(),
     //      (linearized_jacobians.transpose() * linearized_residuals - b).sum());
-     ROS_INFO("marginal all costs %f ms", t_marg_all.toc());
+    //  ROS_INFO("marginal all costs %f ms", t_marg_all.toc());
 }
 
 std::vector<double *> MarginalizationInfo::getParameterBlocks(std::unordered_map<long, double *> &addr_shift)
@@ -381,6 +348,9 @@ std::vector<double *> MarginalizationInfo::getParameterBlocks(std::unordered_map
 
     return keep_block_addr;
 }
+
+
+
 
 MarginalizationFactor::MarginalizationFactor(MarginalizationInfo* _marginalization_info):marginalization_info(_marginalization_info)
 {

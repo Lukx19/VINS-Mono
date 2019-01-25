@@ -2,14 +2,17 @@
     <env name="ROSCONSOLE_CONFIG_FILE"
        value="$(find vins_estimator)/launch/custom_rosconsole.conf"/>
     <arg name="config_path" default = "$(find feature_tracker)/../config/euroc/euroc_config.yaml" />
-	  <arg name="vins_path" default = "$(find feature_tracker)/../config/../" />
+	<arg name="vins_path" default = "$(find feature_tracker)/../config/../" />
 
     <node name="feature_tracker" pkg="feature_tracker" type="feature_tracker" output="screen">
         <param name="config_file" type="string" value="$(arg config_path)" />
         <param name="vins_folder" type="string" value="$(arg vins_path)" />
+         <remap from="~init" to="/vins_estimator/initialization" />
     </node>
 
-    <node name="vins_estimator" pkg="vins_estimator" type="vins_estimator" output="log">
+    <!-- launch-prefix="xterm -e gdb \-\-args"
+     -->
+    <node name="vins_estimator" pkg="vins_estimator" type="vins_estimator" output="screen">
        <param name="config_file" type="string" value="$(arg config_path)" />
        <param name="vins_folder" type="string" value="$(arg vins_path)" />
     </node>

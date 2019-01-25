@@ -25,6 +25,8 @@
 class Estimator {
 public:
   Estimator();
+  ~Estimator();
+  void printStatistics() const;
 
   void setParameter();
 
@@ -48,6 +50,7 @@ public:
   void vector2double();
   void double2vector();
   bool failureDetection();
+  bool isInitializing();
 
   enum SolverFlag { INITIAL, NON_LINEAR };
 

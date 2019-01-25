@@ -239,6 +239,7 @@ def evaluate_trajectory(traj_gt,traj_est,param_max_pairs=10000,param_fixed_delta
         t_gt_return = stamps_gt[find_closest_index(stamps_gt,t_est_return + param_offset)]
         if not t_est_return in stamps_est_return:
             stamps_est_return.append(t_est_return)
+
     if(len(stamps_est_return)<2):
         raise Exception("Number of overlap in the timestamps is too small. Did you run the evaluation on the right files?")
 

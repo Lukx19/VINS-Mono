@@ -26,13 +26,15 @@ public:
   static void stop(const std::string &timer_name);
 
 
+  static std::string toString();
+  static std::string toString(const std::string& timer_name);
   /**
-   * Print the durations of all timers.
+   * @brief
+   *
    */
   static void printTimers();
 
   static void printTimer(const std::string &timer_name);
-
   /**
    * Reset all timers.
    */
@@ -48,12 +50,13 @@ private:
     std::chrono::steady_clock::time_point start;
     size_t count;
     float mean;
+    float max;
+    float min;
     float total;
     float M2;
     bool running;
     TimeData()
-        : start(std::chrono::steady_clock::now()), count(0), mean(0), total(0),
-          M2(0), running(true) {}
+        : start(std::chrono::steady_clock::now()), count(0), mean(0),max(0),min(1000000.f), total(0),M2(0), running(true) {}
   };
 
   void updateTimer(const std::string &timer_name);

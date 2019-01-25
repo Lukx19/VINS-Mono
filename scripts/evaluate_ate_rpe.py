@@ -49,6 +49,7 @@ import itertools
 import argparse
 import math
 import os
+import json
 
 import evaluate_rpe
 
@@ -135,10 +136,8 @@ def associate(first_list, second_list,offset,max_difference):
     matches.sort()
     return matches
 
-
-def align(model,data):
+def align(model, data):
     """Align two trajectories using the method of Horn (closed-form).
-
     Input:
     model -- first trajectory (3xn)
     data -- second trajectory (3xn)
@@ -149,7 +148,6 @@ def align(model,data):
     trans_error -- translational error per point (1xn)
 
     """
-    np.set_printoptions(precision=3,suppress=True)
     model_zerocentered = model - model.mean(1)
     data_zerocentered = data - data.mean(1)
 
@@ -171,18 +169,8 @@ def align(model,data):
         normi = np.linalg.norm(model_zerocentered[:,column])
         norms += normi*normi
 
-    s = float(dots/norms)
-
-    print "scale: %f " % s
-
-    trans = data.mean(1) - s*rot * model.mean(1)
-
-    model_aligned = s*rot * model + trans
-    alignment_error = model_aligned - data
-
-    trans_error = np.sqrt(np.sum(np.multiply(alignment_error,alignment_error),0)).A[0]
-
-    return np.array(rot), np.array(trans), np.array(trans_error), s
+    s = float(dots / norms)
+    return np.array(rot), s
 
 def rigid_body_transform(quat,trans):
     T = transf.quaternion_matrix(quat)
@@ -245,19 +233,81 @@ def plot_rotation_error(timestamps, rotation_error, results_dir,name_prefix=""):
     fig.tight_layout()
     fig.savefig(results_dir+'/orientation_error_'+name_prefix+'.png', bbox_extra_artists=(lgd,), bbox_inches='tight')
 
-def rpe_trajectory(gt_trajectory, es_trajectory):
+def rpe_trajectory(gt_trajectory, es_trajectory,param_fixed_delta=False,param_delta=1.00,param_delta_unit="s"):
     gt = [(key, evaluate_rpe.transform44(list(itertools.chain.from_iterable([[key], gt_trajectory[key]])))) for key in gt_trajectory]
     gt = dict(gt)
     es = [(key, evaluate_rpe.transform44(list(itertools.chain.from_iterable([[key], es_trajectory[key]])))) for key in es_trajectory]
     es=dict(es)
-    result = np.array(evaluate_rpe.evaluate_trajectory(gt, es))
+    result = np.array(evaluate_rpe.evaluate_trajectory(gt, es, param_fixed_delta=param_fixed_delta,param_delta=param_delta,param_delta_unit=param_delta_unit))
     stamps_rpe = result[:,0]
     trans_rpe_error = result[:,4]
     rot_rpe_error = result[:, 5]
     return stamps_rpe,trans_rpe_error,rot_rpe_error
 
+def abs_trajectory(q_gt,p_gt,q_es,p_es):
+    # use first 10 % frames to estimate 3d rotation, scale and translation of datapoints
+    # init_frames = int(math.ceil(p_es.shape[0] / 10))
+    init_frames = int(math.ceil(p_es.shape[0]))
+
+    rot,scale = align(np.matrix(p_es[0:init_frames,:].T), np.matrix(p_gt[0:init_frames,:].T))
+
+    trans = np.mean(p_gt, axis=0,keepdims=True).T - np.dot(rot, np.mean(p_es, axis=0,keepdims=True).T)
+
+    p_es_aligned = (np.dot( rot, p_es.T) + trans).T
+
+
+    T_gt = rigid_body_transform(q_gt[0,:], p_gt[0,:])
+    T_es = rigid_body_transform(q_es[0,:], p_es_aligned[0,:])
+    T_es_inv = np.linalg.inv(T_es)
+    T_0 = np.dot(T_gt, T_es_inv)
+    # print 'T_0 = ' + str(T_0)
+
+    # apply transformation to estimated trajectory
+    q_es_aligned = np.zeros(np.shape(q_es))
+    rpy_es_aligned = np.zeros(np.shape(p_es))
+    rpy_gt = np.zeros(np.shape(p_es))
+    # orient_error = np.zeros(np.shape(p_es)[0])
+    # orient_error_point = np.zeros(np.shape(p_es)[0])
+    for i in range(np.shape(p_es)[0]):
+        T_es = rigid_body_transform(q_es[i,:],p_es_aligned[i,:])
+        T_gt = np.dot( T_0,T_es)
+        q_es_aligned[i,:] = transf.quaternion_from_matrix(T_gt)
+        # orient_error[i] = np.dot(q_es_aligned[i,:],transf.quaternion_inverse(q_gt[i,:]))
+        rpy_es_aligned[i,:] = transf.euler_from_matrix(T_gt[0:3,0:3],'rzyx')
+        rpy_gt[i,:] = transf.euler_from_quaternion(q_gt[i,:], 'rzyx')
+        # orient_error = np.arccos(min(1, max(-1, (np.trace(T_gt[0:3, 0:3]) - 1) / 2)))
+        # print(orient_error)
+        # orient_error_point[i] = orient_error
+
+    trans_error = (p_gt - p_es_aligned)
+    trans_error_point = np.sqrt(np.sum(np.power(trans_error, 2), axis=1))
+
+
+    orient_error_rpy = (rpy_gt - rpy_es_aligned)
+    orient_error = np.sum(np.abs(orient_error_rpy),axis=1)
+    #  normalize angle differences
+    # orient_error = np.arctan2(np.sin(orient_error), np.cos(orient_error))
+    # iner_prod = np.sum(np.multiply(q_es_aligned, q_gt), axis=1)
+    # print(q_es_aligned,q_gt)
+    # orient_error_point = 2 * np.arccos(np.abs(iner_prod))
+    # orient_error_point -=  np.min(orient_error_point)
+    # print(iner_prod[0],iner_prod.shape)
+    # print("difference in errors:"+str(np.sum(trans_error2 - trans_error_point)))
+    return p_es_aligned,trans_error_point,orient_error, scale
+
 def normalize_quaternion(q):
     return  q / np.linalg.norm(q)
+
+def metrics(err):
+    data_dict = {}
+    data_dict["rmse"] = float(np.sqrt(np.dot(err, err) / len(err)))
+    data_dict["mean"] = float(np.mean(err))
+    data_dict["median"] = float(np.median(err))
+    data_dict["std"] = float(np.std(err))
+    data_dict["min"] = float(np.min(err))
+    data_dict["max"] = float(np.max(err))
+    return data_dict
+
 
 if __name__=="__main__":
     # parse command line
@@ -308,87 +358,39 @@ if __name__=="__main__":
     q_es = normalize_quaternion(np.array([[float(value) for value in second_list[b][3:7]] for a, b in matches]))
     p_es = np.array([[float(value) for value in second_list[b][0:3]] for a,b in matches])
 
+    print(p_es)
     start_time = min(t_es[0], t_gt[0])
     t_es -= start_time
     t_gt -= start_time
-    # use first 10 % frames to estimate 3d rotation, scale and translation of datapoints
-    # init_frames = int(math.ceil(p_es.shape[0] / 10))
-    init_frames = int(math.ceil(p_es.shape[0]))
-    rot, trans, trans_error2, scale2 = align(np.matrix(p_es[0:init_frames,:].T), np.matrix(p_gt[0:init_frames,:].T))
-    scale = scale2
-    p_es_aligned = (np.dot(scale * rot, p_es.T) + trans).T
-    # print("p aligned", p_es_aligned.shape)
+    p_es_aligned, trans_abs_error, rot_abs_error,scale = abs_trajectory(q_gt, p_gt, q_es, p_es)
+    print(trans_rpe_error)
+    print(trans_abs_error)
+    print(rot_rpe_error)
+    print(rot_abs_error)
 
-    T_gt = rigid_body_transform(q_gt[0,:], p_gt[0,:])
-    T_es = rigid_body_transform(q_es[0,:], p_es_aligned[0,:])
-    T_es_inv = np.linalg.inv(T_es)
-    T_0 = np.dot(T_gt, T_es_inv)
-    # print 'T_0 = ' + str(T_0)
-
-    # apply transformation to estimated trajectory
-    q_es_aligned = np.zeros(np.shape(q_es))
-    rpy_es_aligned = np.zeros(np.shape(p_es))
-    rpy_gt = np.zeros(np.shape(p_es))
-    # orient_error_point = np.zeros(np.shape(p_es)[0])
-    for i in range(np.shape(p_es)[0]):
-        T_es = rigid_body_transform(q_es[i,:],p_es_aligned[i,:])
-        T_gt = np.dot( T_0,T_es)
-        q_es_aligned[i,:] = transf.quaternion_from_matrix(T_gt)
-        rpy_es_aligned[i,:] = transf.euler_from_matrix(T_gt[0:3,0:3],'rzyx')
-        rpy_gt[i,:] = transf.euler_from_quaternion(q_gt[i,:], 'rzyx')
-        # orient_error = np.arccos(min(1, max(-1, (np.trace(T_gt[0:3, 0:3]) - 1) / 2)))
-        # print(orient_error)
-        # orient_error_point[i] = orient_error
-
-    trans_error = (p_gt - p_es_aligned)
-    trans_error_point = np.sqrt(np.sum(np.power(trans_error, 2), axis=1))
-
-
-    orient_error = (rpy_gt - rpy_es_aligned)
-    #  normalize angle differences
-    orient_error = np.arctan2(np.sin(orient_error), np.cos(orient_error))
-    iner_prod = np.sum(np.multiply(q_es_aligned, q_gt), axis=1)
-    # print(q_es_aligned,q_gt)
-    orient_error_point = 2 * np.arccos(np.abs(iner_prod))
-    orient_error_point -=  np.min(orient_error_point)
-    # print(iner_prod[0],iner_prod.shape)
 #    --------------------------------------------------
+    to_deg = 180.0 / np.pi
+    to_m = 100
+    results = {}
+    results["ATE"] = metrics(trans_abs_error*to_m)
+    # results["absolute_orientation_error"] = metrics(rot_abs_error * to_deg)
+    results["RPE_translation"] = metrics(trans_rpe_error * to_m)
+    results["RPE_orientation"] = metrics(rot_rpe_error * to_deg)
+    results["scale"] = scale
+
+    results_json_file = args.results_dir+"/results."+args.prefix+".json"
+    with open(results_json_file, "w") as f:
+        f.write(json.dumps(results))
+
     if args.verbose:
-        print "compared_pose_pairs %d pairs"%(len(trans_error))
-        print(np.dot(trans_error_point,trans_error_point))
-        print "absolute_translation_error.rmse %f m"%np.sqrt(np.dot(trans_error_point,trans_error_point.T) / len(trans_error_point))
-        print "absolute_translation_error.mean %f m"%np.mean(trans_error_point)
-        print "absolute_translation_error.median %f m"%np.median(trans_error_point)
-        print "absolute_translation_error.std %f m"%np.std(trans_error_point)
-        print "absolute_translation_error.min %f m"%np.min(trans_error_point)
-        print "absolute_translation_error.max %f m" % np.max(trans_error_point)
-
-        to_deg = 180.0 / np.pi
-        print "\nabsolute_orientation_error.rmse %f deg"%(np.sqrt(np.dot(orient_error_point,orient_error_point) / len(orient_error_point)) * to_deg)
-        print "absolute_orientation_error.mean %f deg"%(np.mean(orient_error_point) * to_deg)
-        print "absolute_orientation_error.median %f deg" %( np.median(orient_error_point) * to_deg)
-        print "absolute_orientation_error.std %f deg"%(np.std(orient_error_point) * to_deg)
-        print "absolute_orientation_error.min %f deg"%(np.min(orient_error_point) * to_deg)
-        print "absolute_orientation_error.max %f deg" % (np.max(orient_error_point) * to_deg)
-
+        print "compared_pose_pairs %d pairs"%(len(trans_abs_error))
+        # print(np.dot(trans_error_point,trans_error_point))
+        print(results["ATE"])
+        # print(results["absolute_orientation_error"])
         print("\nRPE")
-        print "compared_pose_pairs %d pairs"%(len(trans_rpe_error))
-
-        print "translational_error.rmse %f m"%np.sqrt(np.dot(trans_rpe_error,trans_rpe_error) / len(trans_rpe_error))
-        print "translational_error.mean %f m"%np.mean(trans_rpe_error)
-        print "translational_error.median %f m"%np.median(trans_rpe_error)
-        print "translational_error.std %f m"%np.std(trans_rpe_error)
-        print "translational_error.min %f m"%np.min(trans_rpe_error)
-        print "translational_error.max %f m"%np.max(trans_rpe_error)
-
-        print "rotational_error.rmse %f deg"%(np.sqrt(np.dot(rot_rpe_error,rot_rpe_error) / len(rot_rpe_error)) * to_deg)
-        print "rotational_error.mean %f deg"%(np.mean(rot_rpe_error) * to_deg)
-        print "rotational_error.median %f deg"%np.median(rot_rpe_error)
-        print "rotational_error.std %f deg"%(np.std(rot_rpe_error) * to_deg)
-        print "rotational_error.min %f deg"%(np.min(rot_rpe_error) * to_deg)
-        print "rotational_error.max %f deg"%(np.max(rot_rpe_error) * to_deg)
-    else:
-        print "%f"%np.sqrt(np.dot(trans_error_point,trans_error_point) / len(trans_error_point))
+        # print "compared_pose_pairs %d pairs"%(len(trans_rpe_error))
+        print(results["RPE_translation"])
+        print( results["RPE_orientation"])
 
 
 
@@ -400,7 +402,7 @@ if __name__=="__main__":
     if args.plot:
 
         # plot position error (drift)
-        plot_translation_error(t_es, trans_error, args.results_dir,args.prefix)
+        # plot_translation_error(t_es, trans_error, args.results_dir,args.prefix)
 
         # # plot orientation error (drift)
         # plot_rotation_error(t_es, orient_error, args.results_dir,args.prefix)
@@ -410,7 +412,7 @@ if __name__=="__main__":
         ax = fig.add_subplot(111)
         plot_traj(ax,t_gt,p_gt,'-',"black","ground truth")
         plot_traj(ax,t_es,p_es_aligned,'-',"green","estimated")
-        ax.text(left, bottom, 'scale: '+str(scale2),
+        ax.text(left, bottom, 'scale: '+str(scale),
                     horizontalalignment='left',
                     verticalalignment='top',
                     transform=ax.transAxes)

@@ -1,10 +1,17 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(vins_estimator)
 
+# set(CMAKE_BUILD_TYPE "Debug")
 set(CMAKE_BUILD_TYPE "Release")
-set(CMAKE_CXX_FLAGS "-std=c++11")
 #-DEIGEN_USE_MKL_ALL")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g")
+#  -Wall -Wextra -ffast-math -O3 -march=native -fopenmp -g
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11 -O3  -fPIC")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -Wextra -ffast-math")
+if(${CMAKE_HOST_SYSTEM_PROCESSOR} MATCHES "arm*")
+  message(STATUS "ARM processor detected, will attempt to use NEON.")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
+endif()
+
 
 find_package(catkin REQUIRED COMPONENTS
     roscpp

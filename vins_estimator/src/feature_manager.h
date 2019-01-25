@@ -74,9 +74,12 @@ public:
 
   int getFeatureCount();
 
-  bool addFeatureCheckParallax(int frame_count,
-                               const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& image,
-                               double td);
+  std::array<size_t, WINDOW_SIZE> visibleFrames(int frame_count) const;
+
+  void addFeatures(int frame_count,
+                   const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& image,
+                   double td);
+  bool shouldBeKeyframe(int frame_id) const;
   void debugShow();
   vector<pair<Vector3d, Vector3d>> getCorresponding(int frame_count_l, int frame_count_r);
 
@@ -95,7 +98,7 @@ public:
   int last_track_num;
 
 private:
-  double compensatedParallax2(const FeaturePerId& it_per_id, int frame_count);
+  double compensatedParallax2(const FeaturePerId& it_per_id, int frame_count) const;
   const Matrix3d* Rs;
   Matrix3d ric[NUM_OF_CAM];
 };

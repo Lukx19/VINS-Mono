@@ -7,6 +7,8 @@
 #include <opencv2/opencv.hpp>
 #include <queue>
 #include <thread>
+#include <signal.h>
+#include <std_msgs/Bool.h>
 
 #include "estimator.h"
 #include "parameters.h"
@@ -37,6 +39,9 @@ Eigen::Vector3d gyr_0;
 bool init_feature = 0;
 bool init_imu = 1;
 double last_imu_t = 0;
+
+ros::Publisher pub_start_initialization;
+bool is_initializing = false;
 
 void predict(const sensor_msgs::ImuConstPtr& imu_msg) {
   double t = imu_msg->header.stamp.toSec();
@@ -101,7 +106,7 @@ getMeasurements() {
 
     if (!(imu_buf.back()->header.stamp.toSec() >
           feature_buf.front()->header.stamp.toSec() + estimator.td)) {
-      // ROS_WARN("wait for imu, only should happen at the beginning");
+      ROS_WARN("wait for imu, only should happen at the beginning");
       sum_of_wait++;
       return measurements;
     }
@@ -193,6 +198,12 @@ void relocalization_callback(const sensor_msgs::PointCloudConstPtr& points_msg) 
 // thread: visual-inertial odometry
 void process() {
   while (true) {
+    if(estimator.isInitializing() != is_initializing){
+      is_initializing = estimator.isInitializing();
+      std_msgs::Bool init_flag;
+      init_flag.data = is_initializing;
+      pub_start_initialization.publish(init_flag);
+    }
     std::vector<std::pair<std::vector<sensor_msgs::ImuConstPtr>, sensor_msgs::PointCloudConstPtr>>
         measurements;
     std::unique_lock<std::mutex> lk(m_buf);
@@ -312,9 +323,22 @@ void process() {
   }
 }
 
+
+void termHandler(int sig) {
+  estimator.printStatistics();
+  ros::Duration(5).sleep();
+  ros::shutdown();
+}
+
+
+
+
 int main(int argc, char** argv) {
   ros::init(argc, argv, "vins_estimator");
   ros::NodeHandle n("~");
+  signal(SIGTERM, termHandler);
+  signal(SIGINT, termHandler);
+  signal(SIGKILL, termHandler);
   // ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
   readParameters(n);
   estimator.setParameter();
@@ -324,6 +348,7 @@ int main(int argc, char** argv) {
   ROS_WARN("waiting for image and imu...");
 
   registerPub(n);
+  pub_start_initialization = n.advertise<std_msgs::Bool>("initialization", 1000);
 
   ros::Subscriber sub_imu =
       n.subscribe(IMU_TOPIC, 2000, imu_callback, ros::TransportHints().tcpNoDelay());

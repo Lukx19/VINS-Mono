@@ -6,9 +6,9 @@
  * @author Lukas Jelinek
  */
 
-#include <chrono>
 #include <map>
 #include <string>
+#include <chrono>
 
 class Timer {
 public:
@@ -16,22 +16,25 @@ public:
    * Start the timer.
    * @param timer_name The name of the timer.
    */
-  static void start(const std::string& timer_name);
+  static void start(const std::string &timer_name);
 
   /**
    * Stop the timer.
    * @param timer_name The name of the timer.
    * @return Duration of the timer.
    */
-  static void stop(const std::string& timer_name);
+  static void stop(const std::string &timer_name);
 
+
+  static std::string toString();
+  static std::string toString(const std::string& timer_name);
   /**
-   * Print the durations of all timers.
+   * @brief
+   *
    */
   static void printTimers();
 
-  static void printTimer(const std::string& timer_name);
-
+  static void printTimer(const std::string &timer_name);
   /**
    * Reset all timers.
    */
@@ -47,26 +50,28 @@ private:
     std::chrono::steady_clock::time_point start;
     size_t count;
     float mean;
+    float max;
+    float min;
     float total;
     float M2;
     bool running;
     TimeData()
-      : start(std::chrono::steady_clock::now()), count(0), mean(0), total(0), M2(0), running(true) {
-    }
+        : start(std::chrono::steady_clock::now()), count(0), mean(0),max(0),min(1000000.f), total(0),M2(0), running(true) {}
   };
 
-  void updateTimer(const std::string& timer_name);
+  void updateTimer(const std::string &timer_name);
   /**
    * Start the timer internally.
    * @param timer_name The name of the timer.
    */
-  void internalStart(const std::string& timer_name);
+  void internalStart(const std::string &timer_name);
 
   /**
    * Stop the timer internally.
    * @param timer_name The name of the timer.
    */
-  void internalStop(const std::string& timer_name);
+  void internalStop(const std::string &timer_name);
+
 
   /**
    * Reset all timers internally.
@@ -77,7 +82,7 @@ private:
    * Get an instance of a timer.
    * @return An instance of a timer.
    */
-  static Timer& getInstance();
+  static Timer &getInstance();
 
   /**
    * Map between the timer names and their data.

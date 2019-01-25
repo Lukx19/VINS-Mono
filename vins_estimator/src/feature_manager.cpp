@@ -31,13 +31,29 @@ int FeatureManager::getFeatureCount() {
   return cnt;
 }
 
-bool FeatureManager::addFeatureCheckParallax(
+// return true if this keyframe is visible from frame_count frame
+std::array<size_t, WINDOW_SIZE> FeatureManager::visibleFrames(int frame_count) const {
+  // vector<pair<Vector3d, Vector3d>> feature_points = getCorresponding(frame_id, frame_id);
+  std::array<size_t, WINDOW_SIZE> visible;
+  visible.fill(0);
+  for (const FeaturePerId& it_per_id : feature) {
+    // feature started at least two frames before current frame and feature last till current
+    // frame.
+    if (it_per_id.start_frame < frame_count &&
+        it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) >= frame_count) {
+      visible.at(it_per_id.start_frame) +=1;
+    }
+  }
+  return visible;
+}
+
+void FeatureManager::addFeatures(
     int frame_count, const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& image,
     double td) {
   ROS_DEBUG("input feature: %d", (int)image.size());
   ROS_DEBUG("num of feature: %d", getFeatureCount());
-  double parallax_sum = 0;
-  int parallax_num = 0;
+  // double parallax_sum = 0;
+  // int parallax_num = 0;
   last_track_num = 0;
   for (auto& id_pts : image) {
     FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
@@ -46,7 +62,8 @@ bool FeatureManager::addFeatureCheckParallax(
     auto it = find_if(feature.begin(), feature.end(),
                       [feature_id](const FeaturePerId& it) { return it.feature_id == feature_id; });
 
-    if (it == feature.end()) {
+    bool new_feature = it == feature.end();
+    if (new_feature) {
       feature.push_back(FeaturePerId(feature_id, frame_count));
       feature.back().feature_per_frame.push_back(f_per_fra);
     } else if (it->feature_id == feature_id) {
@@ -54,19 +71,48 @@ bool FeatureManager::addFeatureCheckParallax(
       last_track_num++;
     }
   }
+  ROS_DEBUG("features: %d, new features %d", image.size(), image.size() - last_track_num);
+  // // if not enough frames
+  // //TODO: remove this condition about 20 features. It may cause problems with smaller number of
+  // features if (frame_count < 2)
+  //   return true;
 
-  if (frame_count < 2 || last_track_num < 20)
+  // for (auto& it_per_id : feature) {
+  //   //feature started at least two frames before current frame and feature last till current
+  //   frame. if (it_per_id.start_frame <= frame_count - 2 &&
+  //       it_per_id.start_frame + int(it_per_id.feature_per_frame.size())  >= frame_count ) {
+  //     parallax_sum += compensatedParallax2(it_per_id, frame_count);
+  //     parallax_num++;
+  //   }
+  // }
+
+  // if (parallax_num < 10) {
+  //   // a lot of new features with only very limited overlap.
+  //   return true;
+  // } else {
+  //   ROS_DEBUG("parallax_sum: %lf, parallax_num: %d", parallax_sum, parallax_num);
+  //   ROS_DEBUG("current parallax: %lf", parallax_sum / parallax_num * FOCAL_LENGTH);
+  //   return parallax_sum / parallax_num >= MIN_PARALLAX;
+  // }
+}
+
+bool FeatureManager::shouldBeKeyframe(int frame_count) const {
+  double parallax_sum = 0;
+  int parallax_num = 0;
+  if (frame_count < 2)
     return true;
 
-  for (auto& it_per_id : feature) {
+  for (const FeaturePerId& it_per_id : feature) {
+    // feature started at least two frames before current frame and feature last till current frame.
     if (it_per_id.start_frame <= frame_count - 2 &&
-        it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) - 1 >= frame_count - 1) {
+        it_per_id.start_frame + int(it_per_id.feature_per_frame.size()) >= frame_count) {
       parallax_sum += compensatedParallax2(it_per_id, frame_count);
       parallax_num++;
     }
   }
 
-  if (parallax_num == 0) {
+  if (parallax_num < 10) {
+    // a lot of new features with only very limited overlap.
     return true;
   } else {
     ROS_DEBUG("parallax_sum: %lf, parallax_num: %d", parallax_sum, parallax_num);
@@ -93,6 +139,7 @@ void FeatureManager::debugShow() {
   }
 }
 
+// all feature points which start before frame_count_l and last at least to the frame frame_count_r
 vector<pair<Vector3d, Vector3d>> FeatureManager::getCorresponding(int frame_count_l,
                                                                   int frame_count_r) {
   vector<pair<Vector3d, Vector3d>> corres;
@@ -293,9 +340,9 @@ void FeatureManager::removeFront(int frame_count) {
   }
 }
 
-double FeatureManager::compensatedParallax2(const FeaturePerId& it_per_id, int frame_count) {
+double FeatureManager::compensatedParallax2(const FeaturePerId& it_per_id, int frame_count) const {
   // check the second last frame is keyframe or not
-  // parallax betwwen seconde last frame and third last frame
+  // parallax between seconde last frame and third last frame
   const FeaturePerFrame& frame_i =
       it_per_id.feature_per_frame[frame_count - 2 - it_per_id.start_frame];
   const FeaturePerFrame& frame_j =

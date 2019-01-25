@@ -1,0 +1,25 @@
+<launch>
+<!--MH_01_easy MH_02_easy MH_03_medium MH_04_difficult MH_05_difficult V1_01_easy V1_02_medium V1_03_difficult V2_01_easy V2_02_medium V2_03_difficult  -->
+    <arg name="sequence_name" default = "V1_02_medium" />
+    <arg name="dataset_folder" default = "/home/osboxes/3duniversum/datasets" />
+
+    <arg name="config_path" default = "$(find okvis_ros)/okvis/config/config_fpga_p2_euroc.yaml" />
+    <arg name="vins_path" default = "$(find feature_tracker)/../config/../" />
+    <arg name="record_file" default = "$(arg vins_path)/recordings.csv" />
+    <arg name="play_bag_flags" default = "-r 0.5 -d 2 -s 10" />
+
+    <!-- SVO -->
+    <node name="okvis_node" pkg="okvis_ros" type="okvis_node_synchronous" required="true" output="screen" args="$(arg config_path) $(arg dataset_folder)/$(arg sequence_name).bag">
+        <param name="mesh_file" value="firefly.dae" />
+        <param name="camera_topic_0" value="/cam0/image_raw" />
+        <param name="camera_topic_1" value="/cam1/image_raw" />
+        <param name="imu_topic" value="/imu0" />
+    </node>
+
+    <node name="benchmark_recorder" pkg="benchmark_recorder" type="benchmark_recorder" required="true" output="log">
+        <param name="rec_file" type="string" value="$(arg record_file)" />
+        <remap from="~estimated_odometry"  to="/okvis_node/okvis_odometry" />
+    </node>
+
+
+</launch>

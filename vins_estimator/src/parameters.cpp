@@ -22,6 +22,8 @@ std::string VINS_RESULT_PATH;
 std::string IMU_TOPIC;
 double ROW, COL;
 double TD, TR;
+bool MOTION_VIO;
+bool AUTOGRAD;
 
 template <typename T>
 T readParam(ros::NodeHandle& n, std::string name) {
@@ -96,6 +98,8 @@ void readParameters(ros::NodeHandle& n) {
     ROS_INFO_STREAM("Extrinsic_T : " << std::endl << TIC[0].transpose());
   }
 
+  MOTION_VIO = readParam<int>(fsSettings["motion_vio"], 0);
+  AUTOGRAD = readParam<int>(fsSettings["autograd"], 0);
   INIT_DEPTH = 5.0;
   BIAS_ACC_THRESHOLD = 0.1;
   BIAS_GYR_THRESHOLD = 0.1;

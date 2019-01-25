@@ -42,14 +42,23 @@ extrinsicTranslation: !!opencv-matrix
    data: [-0.0216401454975,-0.064676986768, 0.00981073058949]
 
 #feature traker paprameters
-max_cnt: 150            # max feature number in feature tracking
-min_dist: 30            # min distance between two features
+max_cnt: 100            # max feature number in feature tracking
+min_dist: 30            # min distance between two features in pixels
 freq: 10                # frequence (Hz) of publish tracking result. At least 10Hz for good estimation. If set 0, the frequence will be same as raw image
+fundamental_matrix_rejection: 1
 F_threshold: 1.0        # ransac threshold (pixel)
+# the maximum distance from a point to an epipolar line in pixels, beyond which the point is considered an outlier and is not used for computing the final fundamental matrix
 show_track: 1           # publish tracking image as topic
 equalize: 1             # if image is too dark or light, trun on equalize to find enough features
 fisheye: 0              # if using fisheye, trun on it. A circle mask will be loaded to remove edge noisy points
-
+blocks_per_row: 7
+blocks_per_col: 4
+max_features_per_block: 4
+# FASTBlock,GoodBlock, GoodFeatures, FAST, AGASTBlock, AGASTBlockOriginal, AGAST
+algorithm: AGAST
+adaptive_threshold: 1  # only for blocked algorithm
+fast_threshold: 30
+strong_edge_keypoint_preference: 1
 #optimization parameters
 max_solver_time: 0.04  # max solver itration time (ms), to guarantee real time
 max_num_iterations: 8   # max solver itrations, to guarantee real time
@@ -63,14 +72,19 @@ gyr_w: 2.0e-6       # gyroscope bias random work noise standard deviation.     #
 g_norm: 9.81007     # gravity magnitude
 
 #loop closure parameters
-loop_closure: 1                    # start loop closure
+loop_closure: 0                    # start loop closure
 load_previous_pose_graph: 0        # load and reuse previous pose graph; load from 'pose_graph_save_path'
 fast_relocalization: 0             # useful in real-time and large project
-pose_graph_save_path: "/home/tony-ws1/output/pose_graph/" # save and load path
+pose_graph_save_path: /home/tony-ws1/output/pose_graph/ # save and load path
 
 #unsynchronization parameters
 estimate_td: 0                      # online estimate time offset between camera and imu
 td: 0.0                             # initial value of time offset. unit: s. readed image clock + td = real image clock (IMU clock)
+
+# if motion_vio:1 then only the keyframes which share features with current frame are used in optimization. The rest of keyframes are kept constant.
+motion_vio: 0
+# use automatic difrentiation in optimization
+autograd: 0
 
 #rolling shutter parameters
 rolling_shutter: 0                  # 0: global shutter camera, 1: rolling shutter camera

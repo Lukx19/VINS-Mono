@@ -1,5 +1,8 @@
 #include "initial_sfm.h"
 
+using namespace std;
+using namespace Eigen;
+
 GlobalSFM::GlobalSFM() {
 }
 
@@ -102,7 +105,7 @@ void GlobalSFM::triangulateTwoFrames(int frame0, Eigen::Matrix<double, 3, 4>& Po
 // relative_q[i][j]  j_q_i
 // relative_t[i][j]  j_t_ji  (j < i)
 bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
-                          const Matrix3d relative_R, const Vector3d relative_T,
+                          const Matrix3d & relative_R, const Vector3d & relative_T,
                           vector<SFMFeature>& sfm_f, map<int, Vector3d>& sfm_tracked_points) {
   feature_num = sfm_f.size();
   // cout << "set 0 and " << l << " as known " << endl;
@@ -121,7 +124,7 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
   // rotate to cam frame
   Matrix3d c_Rotation[frame_num];
   Vector3d c_Translation[frame_num];
-  Quaterniond c_Quat[frame_num];
+  std::vector<Eigen::Quaterniond,Eigen::aligned_allocator<Eigen::Quaterniond>> c_Quat(frame_num);
   double c_rotation[frame_num][4];
   double c_translation[frame_num][3];
   Eigen::Matrix<double, 3, 4> Pose[frame_num];

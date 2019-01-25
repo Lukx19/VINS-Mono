@@ -6,7 +6,7 @@
 #include <sensor_msgs/PointCloud.h>
 #include <sensor_msgs/image_encodings.h>
 #include <std_msgs/Bool.h>
-
+#include <signal.h>
 #include "feature_tracker.h"
 
 #define SHOW_UNDISTORTION 0
@@ -18,13 +18,23 @@ queue<sensor_msgs::ImageConstPtr> img_buf;
 ros::Publisher pub_img, pub_match;
 ros::Publisher pub_restart;
 
-FeatureTracker trackerData[NUM_OF_CAM];
+std::vector<FeatureTracker> trackers;
 double first_image_time;
 int pub_count = 1;
 bool first_image_flag = true;
 double last_image_time = 0;
 bool init_pub = 0;
 
+void init_callback(const std_msgs::BoolConstPtr & init_msg){
+  ROS_INFO_STREAM("IS INITIALIZING " << init_msg->data);
+  for (auto&& tracker : trackers) {
+    if(init_msg->data){
+      tracker.useInitTracking();
+    }else{
+      tracker.stopInitTracking();
+    }
+  }
+}
 void img_callback(const sensor_msgs::ImageConstPtr& img_msg) {
   if (first_image_flag) {
     first_image_flag = false;
@@ -45,17 +55,18 @@ void img_callback(const sensor_msgs::ImageConstPtr& img_msg) {
     return;
   }
   last_image_time = img_msg->header.stamp.toSec();
+
   // frequency control
+  bool pub_this_frame = false;
   if (round(1.0 * pub_count / (img_msg->header.stamp.toSec() - first_image_time)) <= FREQ) {
-    PUB_THIS_FRAME = true;
+    pub_this_frame = true;
     // reset the frequency control
     if (abs(1.0 * pub_count / (img_msg->header.stamp.toSec() - first_image_time) - FREQ) <
         0.01 * FREQ) {
       first_image_time = img_msg->header.stamp.toSec();
       pub_count = 0;
     }
-  } else
-    PUB_THIS_FRAME = false;
+  }
 
   cv_bridge::CvImageConstPtr ptr;
   if (img_msg->encoding == "8UC1") {
@@ -75,19 +86,20 @@ void img_callback(const sensor_msgs::ImageConstPtr& img_msg) {
   TicToc t_r;
   for (int i = 0; i < NUM_OF_CAM; i++) {
     ROS_DEBUG("processing camera %d", i);
-    if (i != 1 || !STEREO_TRACK)
-      trackerData[i].readImage(ptr->image.rowRange(ROW * i, ROW * (i + 1)),
-                               img_msg->header.stamp.toSec());
-    else {
+    if (i != 1 || !STEREO_TRACK) {
+      trackers[i].readImage(ptr->image.rowRange(ROW * i, ROW * (i + 1)),
+                            img_msg->header.stamp.toSec(), pub_this_frame);
+
+    } else {
       if (EQUALIZE) {
         cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
-        clahe->apply(ptr->image.rowRange(ROW * i, ROW * (i + 1)), trackerData[i].cur_img);
+        clahe->apply(ptr->image.rowRange(ROW * i, ROW * (i + 1)), trackers[i].cur_img);
       } else
-        trackerData[i].cur_img = ptr->image.rowRange(ROW * i, ROW * (i + 1));
+        trackers[i].cur_img = ptr->image.rowRange(ROW * i, ROW * (i + 1));
     }
 
 #if SHOW_UNDISTORTION
-    trackerData[i].showUndistortion("undistrotion_" + std::to_string(i));
+    trackers[i].showUndistortion("undistrotion_" + std::to_string(i));
 #endif
   }
 
@@ -95,12 +107,12 @@ void img_callback(const sensor_msgs::ImageConstPtr& img_msg) {
     bool completed = false;
     for (int j = 0; j < NUM_OF_CAM; j++)
       if (j != 1 || !STEREO_TRACK)
-        completed |= trackerData[j].updateID(i);
+        completed |= trackers[j].updateID(i);
     if (!completed)
       break;
   }
 
-  if (PUB_THIS_FRAME) {
+  if (pub_this_frame) {
     pub_count++;
     sensor_msgs::PointCloudPtr feature_points(new sensor_msgs::PointCloud);
     sensor_msgs::ChannelFloat32 id_of_point;
@@ -114,12 +126,12 @@ void img_callback(const sensor_msgs::ImageConstPtr& img_msg) {
 
     vector<set<int>> hash_ids(NUM_OF_CAM);
     for (int i = 0; i < NUM_OF_CAM; i++) {
-      auto& un_pts = trackerData[i].cur_un_pts;
-      auto& cur_pts = trackerData[i].cur_pts;
-      auto& ids = trackerData[i].ids;
-      auto& pts_velocity = trackerData[i].pts_velocity;
+      auto& un_pts = trackers[i].cur_un_pts;
+      auto& cur_pts = trackers[i].cur_pts;
+      auto& ids = trackers[i].ids;
+      auto& pts_velocity = trackers[i].pts_velocity;
       for (unsigned int j = 0; j < ids.size(); j++) {
-        if (trackerData[i].track_cnt[j] > 1) {
+        if (trackers[i].track_cnt[j] > 1) {
           int p_id = ids[j];
           hash_ids[i].insert(p_id);
           geometry_msgs::Point32 p;
@@ -155,25 +167,34 @@ void img_callback(const sensor_msgs::ImageConstPtr& img_msg) {
 
       for (int i = 0; i < NUM_OF_CAM; i++) {
         cv::Mat tmp_img = stereo_img.rowRange(i * ROW, (i + 1) * ROW);
+        // cv::Mat detected_edges,masked_img;
+        // masked_img.create( show_img.size(), show_img.type() );
+        // int ratio = 3;
+        // int kernel_size = 3;
+        // int lowThreshold = 50;
+        // cv::blur( show_img, detected_edges, cv::Size(3,3) );
+        // cv::Canny( detected_edges, detected_edges, lowThreshold, lowThreshold*ratio, kernel_size );
+        // masked_img = cv::Scalar::all(0);
+        // show_img.copyTo(masked_img, detected_edges);
+        // cv::cvtColor(masked_img, tmp_img, CV_GRAY2RGB);
         cv::cvtColor(show_img, tmp_img, CV_GRAY2RGB);
 
-        for (unsigned int j = 0; j < trackerData[i].cur_pts.size(); j++) {
-          double len = std::min(1.0, 1.0 * trackerData[i].track_cnt[j] / WINDOW_SIZE);
-          cv::circle(tmp_img, trackerData[i].cur_pts[j], 2,
-                     cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
+        for (unsigned int j = 0; j < trackers[i].cur_pts.size(); j++) {
+          double len = std::min(1.0, 1.0 * trackers[i].track_cnt[j] / WINDOW_SIZE);
+          cv::circle(tmp_img, trackers[i].cur_pts[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len),
+                     2);
           // draw speed line
-          /*
-          Vector2d tmp_cur_un_pts (trackerData[i].cur_un_pts[j].x, trackerData[i].cur_un_pts[j].y);
-          Vector2d tmp_pts_velocity (trackerData[i].pts_velocity[j].x,
-          trackerData[i].pts_velocity[j].y); Vector3d tmp_prev_un_pts; tmp_prev_un_pts.head(2) =
-          tmp_cur_un_pts - 0.10 * tmp_pts_velocity; tmp_prev_un_pts.z() = 1; Vector2d tmp_prev_uv;
-          trackerData[i].m_camera->spaceToPlane(tmp_prev_un_pts, tmp_prev_uv);
-          cv::line(tmp_img, trackerData[i].cur_pts[j], cv::Point2f(tmp_prev_uv.x(),
-          tmp_prev_uv.y()), cv::Scalar(255 , 0, 0), 1 , 8, 0);
-          */
+          // Vector2d tmp_cur_un_pts (trackers[i].cur_un_pts[j].x, trackers[i].cur_un_pts[j].y);
+          // Vector2d tmp_pts_velocity (trackers[i].pts_velocity[j].x,
+          // trackers[i].pts_velocity[j].y); Vector3d tmp_prev_un_pts; tmp_prev_un_pts.head(2) =
+          // tmp_cur_un_pts - 0.10 * tmp_pts_velocity; tmp_prev_un_pts.z() = 1; Vector2d tmp_prev_uv;
+          // trackers[i].m_camera->spaceToPlane(tmp_prev_un_pts, tmp_prev_uv);
+          // cv::line(tmp_img, trackers[i].cur_pts[j], cv::Point2f(tmp_prev_uv.x(),
+          // tmp_prev_uv.y()), cv::Scalar(255 , 0, 0), 1 , 8, 0);
+
           // char name[10];
-          // sprintf(name, "%d", trackerData[i].ids[j]);
-          // cv::putText(tmp_img, name, trackerData[i].cur_pts[j], cv::FONT_HERSHEY_SIMPLEX, 0.5,
+          // sprintf(name, "%d", trackers[i].ids[j]);
+          // cv::putText(tmp_img, name, trackers[i].cur_pts[j], cv::FONT_HERSHEY_SIMPLEX, 0.5,
           // cv::Scalar(0, 0, 0));
         }
       }
@@ -182,23 +203,35 @@ void img_callback(const sensor_msgs::ImageConstPtr& img_msg) {
       pub_match.publish(ptr->toImageMsg());
     }
   }
-  ROS_INFO("whole feature tracker processing costs: %f", t_r.toc());
+  ROS_DEBUG("whole feature tracker processing costs: %f", t_r.toc());
+}
+
+void termHandler(int sig) {
+  for (auto&& tr : trackers) {
+    tr.printStatistics();
+  }
+  ros::Duration(5).sleep();
+  ros::shutdown();
 }
 
 int main(int argc, char** argv) {
+  signal(SIGTERM, termHandler);
+  signal(SIGINT, termHandler);
+  signal(SIGKILL, termHandler);
+
   ros::init(argc, argv, "feature_tracker");
   ros::NodeHandle n("~");
   ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Info);
   readParameters(n);
-
+  trackers.resize(NUM_OF_CAM);
   for (int i = 0; i < NUM_OF_CAM; i++)
-    trackerData[i].readIntrinsicParameter(CAM_NAMES[i]);
+    trackers[i].readIntrinsicParameter(CAM_NAMES[i]);
 
   if (FISHEYE) {
     for (int i = 0; i < NUM_OF_CAM; i++) {
-      trackerData[i].fisheye_mask = cv::imread(FISHEYE_MASK, 0);
-      if (!trackerData[i].fisheye_mask.data) {
-        ROS_INFO("load mask fail");
+      trackers[i].fisheye_mask = cv::imread(FISHEYE_MASK, 0);
+      if (!trackers[i].fisheye_mask.data) {
+        ROS_ERROR("load mask fail");
         ROS_BREAK();
       } else
         ROS_INFO("load mask success");
@@ -206,7 +239,7 @@ int main(int argc, char** argv) {
   }
 
   ros::Subscriber sub_img = n.subscribe(IMAGE_TOPIC, 100, img_callback);
-
+  ros::Subscriber sub_initialize = n.subscribe("init", 100, init_callback);
   pub_img = n.advertise<sensor_msgs::PointCloud>("feature", 1000);
   pub_match = n.advertise<sensor_msgs::Image>("feature_img", 1000);
   pub_restart = n.advertise<std_msgs::Bool>("restart", 1000);
@@ -215,6 +248,7 @@ int main(int argc, char** argv) {
       cv::namedWindow("vis", cv::WINDOW_NORMAL);
   */
   ros::spin();
+  termHandler(1);
   return 0;
 }
 

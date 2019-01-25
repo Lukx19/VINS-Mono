@@ -20,6 +20,34 @@ extern int SHOW_TRACK;
 extern int STEREO_TRACK;
 extern int EQUALIZE;
 extern int FISHEYE;
-extern bool PUB_THIS_FRAME;
+extern int MAX_CNT_PER_BLOCK;
+extern int BLOCK_PER_ROW;
+extern int BLOCK_PER_COL;
+extern int FAST_THRESHOLD;
+extern std::string ALG;
+extern bool ADAPTIVE_THRESHOLD;
+extern bool EDGE_PREFERENCE;
+extern bool ENABLE_F_REJECTION;
+
+template <typename T>
+T readROSParam(ros::NodeHandle& n, const std::string& name) {
+  T ans;
+  if (n.getParam(name, ans)) {
+    ROS_INFO_STREAM("Loaded " << name << ": " << ans);
+  } else {
+    ROS_ERROR_STREAM("Failed to load " << name);
+    n.shutdown();
+  }
+  return ans;
+}
+
+template <typename T>
+T readParam(const cv::FileNode& fn, const T& default_value) {
+  if (fn.empty()) {
+    return default_value;
+  } else {
+    return fn;
+  }
+}
 
 void readParameters(ros::NodeHandle& n);

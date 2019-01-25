@@ -4,6 +4,9 @@
 #include <cmath>
 #include <cstring>
 #include <eigen3/Eigen/Dense>
+#include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/highgui/highgui.hpp"
+#include <opencv2/core/eigen.hpp>
 
 class Utility {
 public:
@@ -131,3 +134,17 @@ public:
       return angle_degrees + two_pi * std::floor((-angle_degrees + T(180)) / two_pi);
   };
 };
+
+template <typename _Tp, int _rows, int _cols, int _options, int _maxRows, int _maxCols>
+void saveSparsityVis(const Eigen::Matrix<_Tp,_rows,_cols,_options,_maxRows,_maxCols> & A,const std::string & filename)
+{
+  using EMat = Eigen::Matrix<_Tp, _rows, _cols, _options, _maxRows, _maxCols>;
+  cv::Mat A_cv;
+  cv::Mat A_gray;
+  cv::Mat A_tresh;
+  EMat A_abs = A.cwiseAbs();
+  cv::eigen2cv(A_abs, A_cv);
+  cv::threshold(A_cv, A_tresh, std::numeric_limits<_Tp>::epsilon(), 230, cv::THRESH_BINARY);
+  A_tresh.convertTo(A_gray, CV_8U, 1, 0);
+  cv::imwrite(filename, A_gray);
+}
