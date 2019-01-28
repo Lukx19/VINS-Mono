@@ -124,7 +124,8 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
   // rotate to cam frame
   Matrix3d c_Rotation[frame_num];
   Vector3d c_Translation[frame_num];
-  std::vector<Eigen::Quaterniond,Eigen::aligned_allocator<Eigen::Quaterniond>> c_Quat(frame_num);
+  Quaterniond c_Quat[frame_num];
+  // std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> c_Quat(frame_num);
   double c_rotation[frame_num][4];
   double c_translation[frame_num][3];
   Eigen::Matrix<double, 3, 4> Pose[frame_num];

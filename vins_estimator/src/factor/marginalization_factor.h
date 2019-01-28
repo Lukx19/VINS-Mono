@@ -7,10 +7,11 @@
 #include <ceres/ceres.h>
 #include <unordered_map>
 
+#include "../parameters.h"
 #include "../utility/utility.h"
 #include "../utility/tic_toc.h"
 
-// const int NUM_THREADS = 2;
+const int NUM_THREADS = 2;
 
 struct ResidualBlockInfo
 {

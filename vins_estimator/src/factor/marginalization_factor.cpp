@@ -222,11 +222,13 @@ void MarginalizationInfo::marginalize()
 
     n = pos - m;
 
-    //ROS_DEBUG("marginalization, pos: %d, m: %d, n: %d, size: %d", pos, m, n, (int)parameter_block_idx.size());
+    // ROS_DEBUG("marginalization, pos: %d, m: %d, n: %d, size: %d", pos, m, n, (int)parameter_block_idx.size());
+    ROS_INFO("creating indexes %f ms", t_marg_all.toc());
 
     TicToc t_summing;
     Eigen::MatrixXd A(pos, pos);
     Eigen::VectorXd b(pos);
+
     A.setZero();
     b.setZero();
 
@@ -234,26 +236,33 @@ void MarginalizationInfo::marginalize()
     {
         for (int i = 0; i < static_cast<int>(it->parameter_blocks.size()); i++)
         {
+
             int idx_i = parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[i])];
             int size_i = localSize(parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[i])]);
+
             Eigen::MatrixXd jacobian_i = it->jacobians[i].leftCols(size_i);
-            for (int j = i; j < static_cast<int>(it->parameter_blocks.size()); j++)
-            {
-                int idx_j = parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[j])];
-                int size_j = localSize(parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[j])]);
-                Eigen::MatrixXd jacobian_j = it->jacobians[j].leftCols(size_j);
-                if (i == j)
-                    A.block(idx_i, idx_j, size_i, size_j) += jacobian_i.transpose() * jacobian_j;
-                else
-                {
-                    A.block(idx_i, idx_j, size_i, size_j) += jacobian_i.transpose() * jacobian_j;
-                    A.block(idx_j, idx_i, size_j, size_i) = A.block(idx_i, idx_j, size_i, size_j).transpose();
-                }
+            jacobian_i.transposeInPlace();
+            for (int j = i; j < static_cast<int>(it->parameter_blocks.size()); j++) {
+
+              int idx_j = parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[j])];
+              int size_j =
+                  localSize(parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[j])]);
+
+              Eigen::MatrixXd jacobian_j = it->jacobians[j].leftCols(size_j);
+
+              if (i == j)
+                A.block(idx_i, idx_j, size_i, size_j).noalias() += jacobian_i * jacobian_j;
+              else {
+                A.block(idx_i, idx_j, size_i, size_j).noalias() += jacobian_i * jacobian_j;
+                A.block(idx_j, idx_i, size_j, size_i) =
+                    A.block(idx_i, idx_j, size_i, size_j).transpose();
+              }
+
             }
-            b.segment(idx_i, size_i) += jacobian_i.transpose() * it->residuals;
+            b.segment(idx_i, size_i).noalias() += jacobian_i * it->residuals;
         }
     }
-    // ROS_INFO("summing up costs %f ms", t_summing.toc());
+    ROS_INFO("summing up costs %f ms", t_summing.toc());
 
     //multi thread
 
@@ -289,32 +298,34 @@ void MarginalizationInfo::marginalize()
     //     b += threadsstruct[i].b;
     // }
     // Timer::stop("marginalization_summing_Ab");
-    ROS_INFO("thread summing up costs %f ms", t_summing.toc());
+    // ROS_INFO("thread summing up costs %f ms", t_summing.toc());
     // ROS_INFO("A diff %f , b diff %f ", (A - tmp_A).sum(), (b - tmp_b).sum());
 
     Eigen::MatrixXd Amm_inv;
     // TODO
-    TicToc t_sparse;
-    Eigen::SimplicialLDLT<Eigen::SparseMatrix<double> > solver;
-    solver.compute(A.block(0, 0, m, m).sparseView());
-    Eigen::SparseMatrix<double> I(m,m);
-    I.setIdentity();
-    Amm_inv = Eigen::MatrixXd(solver.solve(I));
-    ROS_INFO("solving up sparse costs %f ms", t_sparse.toc());
+    if(USE_SPARSE_MARGINALIZATION){
+        TicToc t_sparse;
+        Eigen::SimplicialLDLT<Eigen::SparseMatrix<double> > solver;
+        solver.compute(A.block(0, 0, m, m).sparseView());
+        Eigen::SparseMatrix<double> I(m,m);
+        I.setIdentity();
+        Amm_inv = Eigen::MatrixXd(solver.solve(I));
+        ROS_INFO("solving up sparse costs %f ms", t_sparse.toc());
+    }else{
+        TicToc t_solving;
+        // Timer::start("marginalization_lin_system_solve");
+        Eigen::MatrixXd Amm = 0.5 * (A.block(0, 0, m, m) + A.block(0, 0, m, m).transpose());
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(Amm);
+        Amm_inv = saes.eigenvectors() * Eigen::VectorXd((saes.eigenvalues().array() > eps).select(saes.eigenvalues().array().inverse(), 0)).asDiagonal() * saes.eigenvectors().transpose();
+        ROS_INFO("solving up costs 1 %f ms", t_solving.toc());
+    // Timer::stop("marginalization_lin_system_solve");
+    }
 
 
 
-    TicToc t_solving;
-    Timer::start("marginalization_lin_system_solve");
-    Eigen::MatrixXd Amm = 0.5 * (A.block(0, 0, m, m) + A.block(0, 0, m, m).transpose());
-
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(Amm);
 
     //ROS_ASSERT_MSG(saes.eigenvalues().minCoeff() >= -1e-4, "min eigenvalue %f", saes.eigenvalues().minCoeff());
-    // Amm_inv = saes.eigenvectors() * Eigen::VectorXd((saes.eigenvalues().array() > eps).select(saes.eigenvalues().array().inverse(), 0)).asDiagonal() * saes.eigenvectors().transpose();
 
-    // ROS_INFO("solving up costs 1 %f ms", t_solving.toc());
-    // Timer::stop("marginalization_lin_system_solve");
     // printf("error1: %f\n", (Amm * Amm_inv - Eigen::MatrixXd::Identity(m, m)).sum());
 
     // std::chrono::milliseconds ms = std::chrono::duration_cast< std::chrono::milliseconds >(
@@ -323,8 +334,8 @@ void MarginalizationInfo::marginalize()
     // // Eigen::MatrixXd Asss = A.block(0, 0, m, m);
     // saveSparsityVis(Amm_inv,filename);
 
-    Timer::start("marginalization_lin_system_solve2");
-    Timer::start("marginalization_lin_system_solveAb");
+    // Timer::start("marginalization_lin_system_solve2");
+    // Timer::start("marginalization_lin_system_solveAb");
     TicToc t_solvingAb;
     // auto  bmm = b.segment(0, m);
     // auto  Amr = A.block(0, m, m, n);
@@ -336,7 +347,7 @@ void MarginalizationInfo::marginalize()
     Eigen::MatrixXd A_mod = A.block(m, m, n, n) - A_temp;
     Eigen::VectorXd b_temp =  A_left * b.segment(0, m);
     Eigen::VectorXd b_mod = b.segment(m, n) - b_temp;
-    Timer::stop("marginalization_lin_system_solveAb");
+    // Timer::stop("marginalization_lin_system_solveAb");
     ROS_INFO("solving up Ab costs %f ms", t_solvingAb.toc());
 
     TicToc t_solving2;
@@ -345,7 +356,7 @@ void MarginalizationInfo::marginalize()
     Eigen::VectorXd S_inv = Eigen::VectorXd((saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array().inverse(), 0));
 
     ROS_INFO("solving up costs2 %f ms", t_solving2.toc());
-    Timer::stop("marginalization_lin_system_solve2");
+    // Timer::stop("marginalization_lin_system_solve2");
 
     Eigen::VectorXd S_sqrt = S.cwiseSqrt();
     Eigen::VectorXd S_inv_sqrt = S_inv.cwiseSqrt();
@@ -357,7 +368,7 @@ void MarginalizationInfo::marginalize()
     //std::cout << linearized_jacobians << std::endl;
     //printf("error2: %f %f\n", (linearized_jacobians.transpose() * linearized_jacobians - A).sum(),
     //      (linearized_jacobians.transpose() * linearized_residuals - b).sum());
-     ROS_INFO("marginal all costs %f ms", t_marg_all.toc());
+    //  ROS_INFO("marginal all costs %f ms", t_marg_all.toc());
 }
 
 std::vector<double *> MarginalizationInfo::getParameterBlocks(std::unordered_map<long, double *> &addr_shift)
@@ -433,11 +444,14 @@ bool MarginalizationFactor::Evaluate(double const *const *parameters, double *re
         {
             if (jacobians[i])
             {
-                int size = marginalization_info->keep_block_size[i], local_size = marginalization_info->localSize(size);
-                int idx = marginalization_info->keep_block_idx[i] - m;
-                Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> jacobian(jacobians[i], n, size);
-                jacobian.setZero();
-                jacobian.leftCols(local_size) = marginalization_info->linearized_jacobians.middleCols(idx, local_size);
+              int size = marginalization_info->keep_block_size[i];
+              int local_size = marginalization_info->localSize(size);
+              int idx = marginalization_info->keep_block_idx[i] - m;
+              Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
+                  jacobian(jacobians[i], n, size);
+              jacobian.setZero();
+              jacobian.leftCols(local_size) =
+                  marginalization_info->linearized_jacobians.middleCols(idx, local_size);
             }
         }
     }

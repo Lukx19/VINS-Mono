@@ -4,9 +4,10 @@ int FeaturePerId::endFrame() {
   return start_frame + feature_per_frame.size() - 1;
 }
 
-FeatureManager::FeatureManager(Matrix3d _Rs[]) : Rs(_Rs) {
-  for (int i = 0; i < NUM_OF_CAM; i++)
+FeatureManager::FeatureManager(const Matrix3d * _Rs) : Rs(_Rs), max_frame_count_(0) {
+  for (int i = 0; i < NUM_OF_CAM; i++){
     ric[i].setIdentity();
+  }
 }
 
 void FeatureManager::setRic(Matrix3d _ric[]) {
@@ -17,6 +18,7 @@ void FeatureManager::setRic(Matrix3d _ric[]) {
 
 void FeatureManager::clearState() {
   feature.clear();
+  max_frame_count_ = 0;
 }
 
 int FeatureManager::getFeatureCount() {
@@ -24,7 +26,7 @@ int FeatureManager::getFeatureCount() {
   for (auto& it : feature) {
     it.used_num = it.feature_per_frame.size();
 
-    if (it.used_num >= 2 && it.start_frame < WINDOW_SIZE - 2) {
+    if (it.used_num >= 2 && it.start_frame+2 < max_frame_count_) {
       cnt++;
     }
   }
@@ -32,10 +34,10 @@ int FeatureManager::getFeatureCount() {
 }
 
 // return true if this keyframe is visible from frame_count frame
-std::array<size_t, WINDOW_SIZE> FeatureManager::visibleFrames(int frame_count) const {
+std::vector<size_t> FeatureManager::visibleFrames(int frame_count) const {
   // vector<pair<Vector3d, Vector3d>> feature_points = getCorresponding(frame_id, frame_id);
-  std::array<size_t, WINDOW_SIZE> visible;
-  visible.fill(0);
+  std::vector<size_t> visible;
+  visible.resize(max_frame_count_,0);
   for (const FeaturePerId& it_per_id : feature) {
     // feature started at least two frames before current frame and feature last till current
     // frame.
@@ -52,6 +54,7 @@ void FeatureManager::addFeatures(
     double td) {
   ROS_DEBUG("input feature: %d", (int)image.size());
   ROS_DEBUG("num of feature: %d", getFeatureCount());
+  max_frame_count_ = std::max(max_frame_count_, static_cast<size_t>(frame_count));
   // double parallax_sum = 0;
   // int parallax_num = 0;
   last_track_num = 0;
@@ -163,7 +166,7 @@ void FeatureManager::setDepth(const VectorXd& x) {
   int feature_index = -1;
   for (auto& it_per_id : feature) {
     it_per_id.used_num = it_per_id.feature_per_frame.size();
-    if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+    if (!(it_per_id.used_num >= 2 && it_per_id.start_frame+2 < max_frame_count_))
       continue;
 
     it_per_id.estimated_depth = 1.0 / x(++feature_index);
@@ -188,7 +191,7 @@ void FeatureManager::clearDepth(const VectorXd& x) {
   int feature_index = -1;
   for (auto& it_per_id : feature) {
     it_per_id.used_num = it_per_id.feature_per_frame.size();
-    if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+    if (!(it_per_id.used_num >= 2 && it_per_id.start_frame+2 < max_frame_count_))
       continue;
     it_per_id.estimated_depth = 1.0 / x(++feature_index);
   }
@@ -199,7 +202,7 @@ VectorXd FeatureManager::getDepthVector() {
   int feature_index = -1;
   for (auto& it_per_id : feature) {
     it_per_id.used_num = it_per_id.feature_per_frame.size();
-    if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+    if (!(it_per_id.used_num >= 2 && it_per_id.start_frame+2 < max_frame_count_))
       continue;
 #if 1
     dep_vec(++feature_index) = 1. / it_per_id.estimated_depth;
@@ -213,7 +216,7 @@ VectorXd FeatureManager::getDepthVector() {
 void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[]) {
   for (auto& it_per_id : feature) {
     it_per_id.used_num = it_per_id.feature_per_frame.size();
-    if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+    if (!(it_per_id.used_num >= 2 && it_per_id.start_frame +2 < max_frame_count_))
       continue;
 
     if (it_per_id.estimated_depth > 0)
@@ -330,7 +333,7 @@ void FeatureManager::removeFront(int frame_count) {
     if (it->start_frame == frame_count) {
       it->start_frame--;
     } else {
-      int j = WINDOW_SIZE - 1 - it->start_frame;
+      int j = max_frame_count_ - 1 - it->start_frame;
       if (it->endFrame() < frame_count - 1)
         continue;
       it->feature_per_frame.erase(it->feature_per_frame.begin() + j);

@@ -24,6 +24,8 @@ double ROW, COL;
 double TD, TR;
 bool MOTION_VIO;
 bool AUTOGRAD;
+bool USE_SPARSE_MARGINALIZATION;
+size_t INIT_WINDOW_SIZE;
 
 template <typename T>
 T readParam(ros::NodeHandle& n, std::string name) {
@@ -100,6 +102,9 @@ void readParameters(ros::NodeHandle& n) {
 
   MOTION_VIO = readParam<int>(fsSettings["motion_vio"], 0);
   AUTOGRAD = readParam<int>(fsSettings["autograd"], 0);
+  USE_SPARSE_MARGINALIZATION = readParam<int>(fsSettings["sparse_marginalization"], 0);
+  INIT_WINDOW_SIZE = static_cast<size_t>(readParam<int>(fsSettings["init_window_size"], WINDOW_SIZE));
+
   INIT_DEPTH = 5.0;
   BIAS_ACC_THRESHOLD = 0.1;
   BIAS_GYR_THRESHOLD = 0.1;

@@ -39,6 +39,8 @@ extern int ROLLING_SHUTTER;
 extern double ROW, COL;
 extern bool MOTION_VIO;
 extern bool AUTOGRAD;
+extern bool USE_SPARSE_MARGINALIZATION;
+extern size_t INIT_WINDOW_SIZE;
 
 void readParameters(ros::NodeHandle& n);
 

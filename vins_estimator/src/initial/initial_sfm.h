@@ -14,7 +14,7 @@ struct SFMFeature {
   int id;
   using Observation = std::vector<std::pair<int, Eigen::Vector2d>,
                                   Eigen::aligned_allocator<std::pair<int, Eigen::Vector2d>>>;
-  Observation observation;
+  std::vector<std::pair<int, Eigen::Vector2d>> observation;
   double position[3];
   double depth;
 };

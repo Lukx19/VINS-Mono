@@ -66,7 +66,7 @@ public:
 
 class FeatureManager {
 public:
-  FeatureManager(Matrix3d _Rs[]);
+  FeatureManager(const Matrix3d * _Rs);
 
   void setRic(Matrix3d _ric[]);
 
@@ -74,7 +74,7 @@ public:
 
   int getFeatureCount();
 
-  std::array<size_t, WINDOW_SIZE> visibleFrames(int frame_count) const;
+  std::vector<size_t> visibleFrames(int frame_count) const;
 
   void addFeatures(int frame_count,
                    const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>>& image,
@@ -101,6 +101,7 @@ private:
   double compensatedParallax2(const FeaturePerId& it_per_id, int frame_count) const;
   const Matrix3d* Rs;
   Matrix3d ric[NUM_OF_CAM];
+  size_t max_frame_count_;
 };
 
 #endif

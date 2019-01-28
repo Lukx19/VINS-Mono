@@ -48,6 +48,8 @@ public:
   void slideWindowNew();
   void slideWindowOld();
   void optimization();
+  void marginalizeOld();
+  void marginalizeNew();
   void vector2double();
   void double2vector();
   bool failureDetection();
@@ -55,7 +57,7 @@ public:
 
   enum SolverFlag { INITIAL, NON_LINEAR };
 
-  enum MarginalizationFlag { MARGIN_OLD = 0, MARGIN_SECOND_NEW = 1 };
+  enum MarginalizationFlag { MARGIN_OLD , MARGIN_SECOND_NEW, MARGIN_NONE };
 
   SolverFlag solver_flag;
   MarginalizationFlag marginalization_flag;
@@ -84,7 +86,7 @@ public:
   vector<Vector3d> linear_acceleration_buf[(WINDOW_SIZE + 1)];
   vector<Vector3d> angular_velocity_buf[(WINDOW_SIZE + 1)];
 
-  int frame_count;
+  size_t frame_count;
   int sum_of_outlier, sum_of_back, sum_of_front, sum_of_invalid;
 
   FeatureManager f_manager;

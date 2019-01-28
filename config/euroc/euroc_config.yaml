@@ -85,6 +85,8 @@ td: 0.0                             # initial value of time offset. unit: s. rea
 motion_vio: 0
 # use automatic difrentiation in optimization
 autograd: 0
+sparse_marginalization: 1
+init_window_size: 10
 
 #rolling shutter parameters
 rolling_shutter: 0                  # 0: global shutter camera, 1: rolling shutter camera
