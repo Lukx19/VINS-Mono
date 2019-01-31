@@ -223,7 +223,7 @@ void MarginalizationInfo::marginalize()
     n = pos - m;
 
     // ROS_DEBUG("marginalization, pos: %d, m: %d, n: %d, size: %d", pos, m, n, (int)parameter_block_idx.size());
-    ROS_INFO("creating indexes %f ms", t_marg_all.toc());
+    // ROS_INFO("creating indexes %f ms", t_marg_all.toc());
 
     TicToc t_summing;
     Eigen::MatrixXd A(pos, pos);
@@ -232,72 +232,72 @@ void MarginalizationInfo::marginalize()
     A.setZero();
     b.setZero();
 
-    for (auto it : factors)
-    {
-        for (int i = 0; i < static_cast<int>(it->parameter_blocks.size()); i++)
-        {
+    // for (auto it : factors)
+    // {
+    //     for (int i = 0; i < static_cast<int>(it->parameter_blocks.size()); i++)
+    //     {
 
-            int idx_i = parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[i])];
-            int size_i = localSize(parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[i])]);
+    //         int idx_i = parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[i])];
+    //         int size_i = localSize(parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[i])]);
 
-            Eigen::MatrixXd jacobian_i = it->jacobians[i].leftCols(size_i);
-            jacobian_i.transposeInPlace();
-            for (int j = i; j < static_cast<int>(it->parameter_blocks.size()); j++) {
+    //         Eigen::MatrixXd jacobian_i = it->jacobians[i].leftCols(size_i);
+    //         jacobian_i.transposeInPlace();
+    //         for (int j = i; j < static_cast<int>(it->parameter_blocks.size()); j++) {
 
-              int idx_j = parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[j])];
-              int size_j =
-                  localSize(parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[j])]);
+    //           int idx_j = parameter_block_idx[reinterpret_cast<long>(it->parameter_blocks[j])];
+    //           int size_j =
+    //               localSize(parameter_block_size[reinterpret_cast<long>(it->parameter_blocks[j])]);
 
-              Eigen::MatrixXd jacobian_j = it->jacobians[j].leftCols(size_j);
+    //           Eigen::MatrixXd jacobian_j = it->jacobians[j].leftCols(size_j);
 
-              if (i == j)
-                A.block(idx_i, idx_j, size_i, size_j).noalias() += jacobian_i * jacobian_j;
-              else {
-                A.block(idx_i, idx_j, size_i, size_j).noalias() += jacobian_i * jacobian_j;
-                A.block(idx_j, idx_i, size_j, size_i) =
-                    A.block(idx_i, idx_j, size_i, size_j).transpose();
-              }
+    //           if (i == j)
+    //             A.block(idx_i, idx_j, size_i, size_j).noalias() += jacobian_i * jacobian_j;
+    //           else {
+    //             A.block(idx_i, idx_j, size_i, size_j).noalias() += jacobian_i * jacobian_j;
+    //             A.block(idx_j, idx_i, size_j, size_i) =
+    //                 A.block(idx_i, idx_j, size_i, size_j).transpose();
+    //           }
 
-            }
-            b.segment(idx_i, size_i).noalias() += jacobian_i * it->residuals;
-        }
-    }
-    ROS_INFO("summing up costs %f ms", t_summing.toc());
+    //         }
+    //         b.segment(idx_i, size_i).noalias() += jacobian_i * it->residuals;
+    //     }
+    // }
+    // ROS_INFO("summing up costs %f ms", t_summing.toc());
 
     //multi thread
 
-    // Timer::start("marginalization_summing_Ab");
-    // TicToc t_thread_summing;
-    // pthread_t tids[NUM_THREADS];
-    // ThreadsStruct threadsstruct[NUM_THREADS];
-    // int i = 0;
-    // for (auto it : factors)
-    // {
-    //     threadsstruct[i].sub_factors.push_back(it);
-    //     i++;
-    //     i = i % NUM_THREADS;
-    // }
-    // for (int i = 0; i < NUM_THREADS; i++)
-    // {
-    //     TicToc zero_matrix;
-    //     threadsstruct[i].A = Eigen::MatrixXd::Zero(pos,pos);
-    //     threadsstruct[i].b = Eigen::VectorXd::Zero(pos);
-    //     threadsstruct[i].parameter_block_size = parameter_block_size;
-    //     threadsstruct[i].parameter_block_idx = parameter_block_idx;
-    //     int ret = pthread_create( &tids[i], NULL, ThreadsConstructA ,(void*)&(threadsstruct[i]));
-    //     if (ret != 0)
-    //     {
-    //         ROS_WARN("pthread_create error");
-    //         ROS_BREAK();
-    //     }
-    // }
-    // for( int i = NUM_THREADS - 1; i >= 0; i--)
-    // {
-    //     pthread_join( tids[i], NULL );
-    //     A += threadsstruct[i].A;
-    //     b += threadsstruct[i].b;
-    // }
-    // Timer::stop("marginalization_summing_Ab");
+    Timer::start("marginalization_summing_Ab");
+    TicToc t_thread_summing;
+    pthread_t tids[NUM_THREADS];
+    ThreadsStruct threadsstruct[NUM_THREADS];
+    int i = 0;
+    for (auto it : factors)
+    {
+        threadsstruct[i].sub_factors.push_back(it);
+        i++;
+        i = i % NUM_THREADS;
+    }
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
+        TicToc zero_matrix;
+        threadsstruct[i].A = Eigen::MatrixXd::Zero(pos,pos);
+        threadsstruct[i].b = Eigen::VectorXd::Zero(pos);
+        threadsstruct[i].parameter_block_size = parameter_block_size;
+        threadsstruct[i].parameter_block_idx = parameter_block_idx;
+        int ret = pthread_create( &tids[i], NULL, ThreadsConstructA ,(void*)&(threadsstruct[i]));
+        if (ret != 0)
+        {
+            ROS_WARN("pthread_create error");
+            ROS_BREAK();
+        }
+    }
+    for( int i = NUM_THREADS - 1; i >= 0; i--)
+    {
+        pthread_join( tids[i], NULL );
+        A += threadsstruct[i].A;
+        b += threadsstruct[i].b;
+    }
+    Timer::stop("marginalization_summing_Ab");
     // ROS_INFO("thread summing up costs %f ms", t_summing.toc());
     // ROS_INFO("A diff %f , b diff %f ", (A - tmp_A).sum(), (b - tmp_b).sum());
 
@@ -310,14 +310,14 @@ void MarginalizationInfo::marginalize()
         Eigen::SparseMatrix<double> I(m,m);
         I.setIdentity();
         Amm_inv = Eigen::MatrixXd(solver.solve(I));
-        ROS_INFO("solving up sparse costs %f ms", t_sparse.toc());
+        // ROS_INFO("solving up sparse costs %f ms", t_sparse.toc());
     }else{
         TicToc t_solving;
         // Timer::start("marginalization_lin_system_solve");
         Eigen::MatrixXd Amm = 0.5 * (A.block(0, 0, m, m) + A.block(0, 0, m, m).transpose());
         Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes(Amm);
         Amm_inv = saes.eigenvectors() * Eigen::VectorXd((saes.eigenvalues().array() > eps).select(saes.eigenvalues().array().inverse(), 0)).asDiagonal() * saes.eigenvectors().transpose();
-        ROS_INFO("solving up costs 1 %f ms", t_solving.toc());
+        // ROS_INFO("solving up costs 1 %f ms", t_solving.toc());
     // Timer::stop("marginalization_lin_system_solve");
     }
 
@@ -348,14 +348,14 @@ void MarginalizationInfo::marginalize()
     Eigen::VectorXd b_temp =  A_left * b.segment(0, m);
     Eigen::VectorXd b_mod = b.segment(m, n) - b_temp;
     // Timer::stop("marginalization_lin_system_solveAb");
-    ROS_INFO("solving up Ab costs %f ms", t_solvingAb.toc());
+    // ROS_INFO("solving up Ab costs %f ms", t_solvingAb.toc());
 
     TicToc t_solving2;
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> saes2(A_mod);
     Eigen::VectorXd S = Eigen::VectorXd((saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array(), 0));
     Eigen::VectorXd S_inv = Eigen::VectorXd((saes2.eigenvalues().array() > eps).select(saes2.eigenvalues().array().inverse(), 0));
 
-    ROS_INFO("solving up costs2 %f ms", t_solving2.toc());
+    // ROS_INFO("solving up costs2 %f ms", t_solving2.toc());
     // Timer::stop("marginalization_lin_system_solve2");
 
     Eigen::VectorXd S_sqrt = S.cwiseSqrt();

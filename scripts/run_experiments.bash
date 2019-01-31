@@ -1,8 +1,9 @@
 #!/bin/bash
 
 alg_run=1
-
+use_ops=0
 while getopts "h?se:" opt; do
+    use_ops=1
     case "$opt" in
     h|\?)
         echo "-d "V1_01_easy V1_02_medium V1_03_difficult"  -o "output_path"  -s[will not run algorithm only statistics]  -c "path to config file"  -r '-s 10 --clock'  -a VINS -e "experiment_file_path" "
@@ -12,8 +13,16 @@ while getopts "h?se:" opt; do
         ;;
     e) experiment_path=$(realpath $OPTARG)
         ;;
+    *) echo "unknown command"
+       exit 0
+        ;;
     esac
 done
+if [ "$use_ops" == 0 ]
+then
+   echo "Please use some of cli ops"
+   exit 0
+fi
 
 experiments=$(find $experiment_path -type f -name "*.conf" -print | sort --unique)
 echo ${experiments}

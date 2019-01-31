@@ -41,6 +41,7 @@ extern bool MOTION_VIO;
 extern bool AUTOGRAD;
 extern bool USE_SPARSE_MARGINALIZATION;
 extern size_t INIT_WINDOW_SIZE;
+extern bool RGBD_CAM;
 
 void readParameters(ros::NodeHandle& n);
 

@@ -26,6 +26,7 @@ bool MOTION_VIO;
 bool AUTOGRAD;
 bool USE_SPARSE_MARGINALIZATION;
 size_t INIT_WINDOW_SIZE;
+bool RGBD_CAM;
 
 template <typename T>
 T readParam(ros::NodeHandle& n, std::string name) {
@@ -104,6 +105,7 @@ void readParameters(ros::NodeHandle& n) {
   AUTOGRAD = readParam<int>(fsSettings["autograd"], 0);
   USE_SPARSE_MARGINALIZATION = readParam<int>(fsSettings["sparse_marginalization"], 0);
   INIT_WINDOW_SIZE = static_cast<size_t>(readParam<int>(fsSettings["init_window_size"], WINDOW_SIZE));
+  RGBD_CAM = readParam<int>(fsSettings["rgbd_camera"], 0);
 
   INIT_DEPTH = 5.0;
   BIAS_ACC_THRESHOLD = 0.1;

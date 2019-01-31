@@ -94,6 +94,9 @@ do
             "VINS")
             executable_cmd="roslaunch benchmark_recorder benchmark_vins.launch ${roslaunch_args}"
             ;;
+            "VINS_RGBD")
+            executable_cmd="roslaunch benchmark_recorder benchmark_vins_rgbd.launch ${roslaunch_args}"
+            ;;
             "SVO")
             executable_cmd="roslaunch benchmark_recorder benchmark_svo.launch ${roslaunch_args}"
             ;;

@@ -3,12 +3,9 @@
 using namespace std;
 using namespace Eigen;
 
-GlobalSFM::GlobalSFM() {
-}
-
-void GlobalSFM::triangulatePoint(Eigen::Matrix<double, 3, 4>& Pose0,
-                                 Eigen::Matrix<double, 3, 4>& Pose1, Vector2d& point0,
-                                 Vector2d& point1, Vector3d& point_3d) {
+void triangulatePoint(const Eigen::Matrix<double, 3, 4>& Pose0,
+                      const Eigen::Matrix<double, 3, 4>& Pose1, const Vector2d& point0,
+                      const Vector2d& point1, Vector3d& point_3d) {
   Matrix4d design_matrix = Matrix4d::Zero();
   design_matrix.row(0) = point0[0] * Pose0.row(2) - Pose0.row(0);
   design_matrix.row(1) = point0[1] * Pose0.row(2) - Pose0.row(1);
@@ -21,17 +18,19 @@ void GlobalSFM::triangulatePoint(Eigen::Matrix<double, 3, 4>& Pose0,
   point_3d(2) = triangulated_point(2) / triangulated_point(3);
 }
 
-bool GlobalSFM::solveFrameByPnP(Matrix3d& R_initial, Vector3d& P_initial, int i,
-                                vector<SFMFeature>& sfm_f) {
+bool solveFrameByPnP(Matrix3d& R_initial, Vector3d& P_initial, int i,
+                     const vector<SFMFeature>& sfm_f) {
   vector<cv::Point2f> pts_2_vector;
   vector<cv::Point3f> pts_3_vector;
-  for (int j = 0; j < feature_num; j++) {
+  size_t feature_num = sfm_f.size();
+  for (size_t j = 0; j < feature_num; j++) {
+    // frame j needs to have XYZ feature pose
     if (sfm_f[j].state != true)
       continue;
     Vector2d point2d;
-    for (int k = 0; k < (int)sfm_f[j].observation.size(); k++) {
+    for (size_t k = 0; k < sfm_f[j].observation.size(); k++) {
       if (sfm_f[j].observation[k].first == i) {
-        Vector2d img_pts = sfm_f[j].observation[k].second;
+        Vector2d img_pts = sfm_f[j].observation[k].second.head<2>();
         cv::Point2f pts_2(img_pts(0), img_pts(1));
         pts_2_vector.push_back(pts_2);
         cv::Point3f pts_3(sfm_f[j].position[0], sfm_f[j].position[1], sfm_f[j].position[2]);
@@ -66,23 +65,23 @@ bool GlobalSFM::solveFrameByPnP(Matrix3d& R_initial, Vector3d& P_initial, int i,
   return true;
 }
 
-void GlobalSFM::triangulateTwoFrames(int frame0, Eigen::Matrix<double, 3, 4>& Pose0, int frame1,
-                                     Eigen::Matrix<double, 3, 4>& Pose1,
-                                     vector<SFMFeature>& sfm_f) {
+void triangulateTwoFrames(int frame0, const Eigen::Matrix<double, 3, 4>& Pose0, int frame1,
+                          const Eigen::Matrix<double, 3, 4>& Pose1, vector<SFMFeature>& sfm_f) {
   assert(frame0 != frame1);
-  for (int j = 0; j < feature_num; j++) {
+  size_t feature_num = sfm_f.size();
+  for (size_t j = 0; j < feature_num; j++) {
     if (sfm_f[j].state == true)
       continue;
     bool has_0 = false, has_1 = false;
     Vector2d point0;
     Vector2d point1;
-    for (int k = 0; k < (int)sfm_f[j].observation.size(); k++) {
+    for (size_t k = 0; k < sfm_f[j].observation.size(); k++) {
       if (sfm_f[j].observation[k].first == frame0) {
-        point0 = sfm_f[j].observation[k].second;
+        point0 = sfm_f[j].observation[k].second.head<2>();
         has_0 = true;
       }
       if (sfm_f[j].observation[k].first == frame1) {
-        point1 = sfm_f[j].observation[k].second;
+        point1 = sfm_f[j].observation[k].second.head<2>();
         has_1 = true;
       }
     }
@@ -99,15 +98,82 @@ void GlobalSFM::triangulateTwoFrames(int frame0, Eigen::Matrix<double, 3, 4>& Po
   }
 }
 
+// convert from camera coordinates into world coordinates in camera frame with known depth.
+Eigen::Vector3d toImage3DCoords(const Eigen::Vector3d& point) {
+  double depth = point.z();
+  Eigen::Vector3d pt_xyz = point;
+  if (depth > 0) {
+    pt_xyz(0) *= depth;
+    pt_xyz(1) *= depth;
+    pt_xyz(2) = depth;
+    return pt_xyz;
+  }
+  return pt_xyz;
+};
+
+void triangulatePointWithDepth(const Eigen::Matrix<double, 3, 4>& pose0,
+                               const Eigen::Matrix<double, 3, 4>& pose1, const Vector3d& point0,
+                               const Vector3d& point1, Vector3d& point_3d) {
+  Eigen::Affine3d pose_a, pose_b;
+  pose_a.matrix().block<3, 4>(0, 0) = pose0;
+  pose_b.matrix().block<3, 4>(0, 0) = pose1;
+  Eigen::Vector3d pt_a = toImage3DCoords(point0);
+  Eigen::Vector3d pt_b = toImage3DCoords(point1);
+  Eigen::Vector3d pt_a_w = (pose_a.inverse() * pt_a);
+  Eigen::Vector3d pt_b_w = (pose_b.inverse() * pt_b);
+  // point_3d = (pt_a_w+pt_b_w) / 2;
+  point_3d = pt_a_w;
+  std::cout << pt_a_w - pt_b_w << ", " << std::endl;
+}
+
+void triangulateWithDepth(int frame0, const Eigen::Matrix<double, 3, 4>& Pose0, int frame1,
+                          const Eigen::Matrix<double, 3, 4>& Pose1, vector<SFMFeature>& sfm_f) {
+  assert(frame0 != frame1);
+  size_t feature_num = sfm_f.size();
+  for (size_t j = 0; j < feature_num; j++) {
+    if (sfm_f[j].state == true)
+      continue;
+    bool has_0 = false, has_1 = false;
+    Vector3d point0;
+    Vector3d point1;
+    for (size_t k = 0; k < sfm_f[j].observation.size(); k++) {
+      if (sfm_f[j].observation[k].first == frame0) {
+        point0 = sfm_f[j].observation[k].second;
+        has_0 = true;
+      }
+      if (sfm_f[j].observation[k].first == frame1) {
+        point1 = sfm_f[j].observation[k].second;
+        has_1 = true;
+      }
+      if (has_0 && has_1) {
+        break;
+      }
+    }
+    if (has_0 && has_1 && point0(2) > 0 && point1(2) > 0) {
+      Vector3d point_3d;
+      triangulatePointWithDepth(Pose0, Pose1, point0, point1, point_3d);
+      sfm_f[j].state = true;
+      sfm_f[j].position[0] = point_3d(0);
+      sfm_f[j].position[1] = point_3d(1);
+      sfm_f[j].position[2] = point_3d(2);
+      // cout << "trangulated : " << frame1 << "  3d point : "  << j << "  " << point_3d.transpose()
+      // << endl;
+    }
+  }
+}
+
+// GlobalSFM::GlobalSFM() {
+// }
+
 // 	 q w_R_cam t w_R_cam
 //  c_rotation cam_R_w
 //  c_translation cam_R_w
 // relative_q[i][j]  j_q_i
 // relative_t[i][j]  j_t_ji  (j < i)
-bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
-                          const Matrix3d & relative_R, const Vector3d & relative_T,
-                          vector<SFMFeature>& sfm_f, map<int, Vector3d>& sfm_tracked_points) {
-  feature_num = sfm_f.size();
+bool globalSFM(int frame_num, Quaterniond* q, Vector3d* T, int l, const Matrix3d& relative_R,
+               const Vector3d& relative_T, vector<SFMFeature>& sfm_f,
+               map<int, Vector3d>& sfm_tracked_points) {
+  size_t feature_num = sfm_f.size();
   // cout << "set 0 and " << l << " as known " << endl;
   // have relative_r relative_t
   // intial two view
@@ -125,7 +191,8 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
   Matrix3d c_Rotation[frame_num];
   Vector3d c_Translation[frame_num];
   Quaterniond c_Quat[frame_num];
-  // std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>> c_Quat(frame_num);
+  // std::vector<Eigen::Quaterniond, Eigen::aligned_allocator<Eigen::Quaterniond>>
+  // c_Quat(frame_num);
   double c_rotation[frame_num][4];
   double c_translation[frame_num][3];
   Eigen::Matrix<double, 3, 4> Pose[frame_num];
@@ -142,7 +209,8 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
   Pose[frame_num - 1].block<3, 3>(0, 0) = c_Rotation[frame_num - 1];
   Pose[frame_num - 1].block<3, 1>(0, 3) = c_Translation[frame_num - 1];
 
-  // 1: trangulate between l ----- frame_num - 1
+
+  // 1: trangulate between l ----- frame_num - 1 => all matching features will have position defined
   // 2: solve pnp l + 1; trangulate l + 1 ------- frame_num - 1;
   for (int i = l; i < frame_num - 1; i++) {
     // solve pnp
@@ -159,6 +227,7 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
     }
 
     // triangulate point based on the solve pnp result
+    triangulateWithDepth(i, Pose[i], frame_num - 1, Pose[frame_num - 1], sfm_f);
     triangulateTwoFrames(i, Pose[i], frame_num - 1, Pose[frame_num - 1], sfm_f);
   }
   // 3: triangulate l-----l+1 l+2 ... frame_num -2
@@ -187,9 +256,9 @@ bool GlobalSFM::construct(int frame_num, Quaterniond* q, Vector3d* T, int l,
     if ((int)sfm_f[j].observation.size() >= 2) {
       Vector2d point0, point1;
       int frame_0 = sfm_f[j].observation[0].first;
-      point0 = sfm_f[j].observation[0].second;
+      point0 = sfm_f[j].observation[0].second.head<2>();
       int frame_1 = sfm_f[j].observation.back().first;
-      point1 = sfm_f[j].observation.back().second;
+      point1 = sfm_f[j].observation.back().second.head<2>();
       Vector3d point_3d;
       triangulatePoint(Pose[frame_0], Pose[frame_1], point0, point1, point_3d);
       sfm_f[j].state = true;

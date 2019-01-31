@@ -1,0 +1,42 @@
+<launch>
+    <env name="ROSCONSOLE_CONFIG_FILE" value="$(find vins_estimator)/launch/custom_rosconsole.conf"/>
+    <arg name="config_path" default = "$(find feature_tracker)/../config/euroc/euroc_config.yaml" />
+    <arg name="vins_path" default = "$(find feature_tracker)/../config/../" />
+
+    <!-- <node pkg="nodelet" type="nodelet" args="manager" name="nodelet_manager" />
+    <node pkg="nodelet" type="nodelet" name="vins_convert_depth" args="load depth_image_proc/convert_metric nodelet_manager">
+        <remap from="image_raw" to="/camera/depth/image_raw"/>
+        <remap from="image" to="/camera/depth/image_converted"/>
+    </node>
+
+    <node pkg="nodelet" type="nodelet" name="vins_rect_depth" args="load depth_image_proc/register nodelet_manager">
+        <remap from="depth/camera_info" to="/camera/depth/camera_info"/>
+        <remap from="depth/image_rect" to="/camera/depth/image_converted"/>
+        <remap from="rgb/camera_info" to="/camera/rgb/camera_info"/>
+        <remap from="depth_registered/image_rect" to="/camera/depth/image_rect"/>
+        <remap from="depth_registered/camera_info" to="/camera/depth/camera_info_rect"/>
+    </node> -->
+
+
+    <node name="feature_tracker" pkg="feature_tracker" type="feature_tracker" output="screen">
+        <param name="config_file" type="string" value="$(arg config_path)" />
+        <param name="vins_folder" type="string" value="$(arg vins_path)" />
+        <remap from="~init" to="/vins_estimator/initialization" />
+    </node>
+
+    <!-- launch-prefix="xterm -e gdb \-\-args"
+     -->
+    <node name="vins_estimator" pkg="vins_estimator" type="vins_estimator" output="screen">
+        <param name="config_file" type="string" value="$(arg config_path)" />
+        <param name="vins_folder" type="string" value="$(arg vins_path)" />
+    </node>
+
+    <!-- <node name="pose_graph" pkg="pose_graph" type="pose_graph" output="log">
+        <param name="config_file" type="string" value="$(arg config_path)" />
+        <param name="visualization_shift_x" type="int" value="0" />
+        <param name="visualization_shift_y" type="int" value="0" />
+        <param name="skip_cnt" type="int" value="0" />
+        <param name="skip_dis" type="double" value="0" />
+    </node> -->
+
+</launch>

@@ -1,6 +1,7 @@
 #include "parameters.h"
 
 std::string IMAGE_TOPIC;
+std::string DEPTH_IMAGE_TOPIC;
 std::string IMU_TOPIC;
 std::vector<std::string> CAM_NAMES;
 std::string FISHEYE_MASK;
@@ -23,6 +24,7 @@ int FAST_THRESHOLD;
 bool ADAPTIVE_THRESHOLD;
 bool EDGE_PREFERENCE;
 bool ENABLE_F_REJECTION;
+bool RGBD_CAM;
 std::string ALG;
 
 void readParameters(ros::NodeHandle& n) {
@@ -35,6 +37,7 @@ void readParameters(ros::NodeHandle& n) {
   std::string VINS_FOLDER_PATH = readROSParam<std::string>(n, "vins_folder");
 
   fsSettings["image_topic"] >> IMAGE_TOPIC;
+  fsSettings["depth_topic: "] >> DEPTH_IMAGE_TOPIC;
   fsSettings["imu_topic"] >> IMU_TOPIC;
   MAX_CNT = fsSettings["max_cnt"];
   std::cout << MAX_CNT << std::endl;
@@ -62,6 +65,7 @@ void readParameters(ros::NodeHandle& n) {
   ADAPTIVE_THRESHOLD = readParam<int>(fsSettings["adaptive_threshold"], 0);
   EDGE_PREFERENCE = readParam<int>(fsSettings["strong_edge_keypoint_preference"], 0);
   ENABLE_F_REJECTION = readParam<int>(fsSettings["fundamental_matrix_rejection"], 1);
+  RGBD_CAM = readParam<int>(fsSettings["rgbd_camera"], 0);
   if (FREQ == 0)
     FREQ = 100;
 

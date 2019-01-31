@@ -181,7 +181,14 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
   if (solver_flag == NON_LINEAR){
     TicToc t_solve;
 
-    solveOdometry();
+    Timer::start("Estimator:triangulate");
+    f_manager.triangulate(Ps, tic, ric);
+    Timer::stop("Estimator:triangulate");
+    ROS_DEBUG("triangulation costs %f", t_solve.toc());
+    Timer::start("Estimator:solving least squares");
+    optimization();
+    Timer::stop("Estimator:solving least squares");
+
     if(frame_count == WINDOW_SIZE ||  marginalization_flag != MARGIN_NONE){
       slideWindow();
     }
@@ -197,10 +204,6 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
       return;
     }
 
-    TicToc t_margin;
-    Timer::start("Estimator:marginalization costs");
-    Timer::stop("Estimator:marginalization costs");
-    ROS_DEBUG("marginalization costs: %fms", t_margin.toc());
     // prepare output of VINS
     key_poses.clear();
     for (size_t i = 0; i <= frame_count; ++i){
@@ -261,7 +264,7 @@ bool Estimator::initialStructure() {
     for (auto& it_per_frame : it_per_id.feature_per_frame) {
       imu_j++;
       Vector3d pts_j = it_per_frame.point;
-      tmp_feature.observation.push_back(make_pair(imu_j, Eigen::Vector2d{pts_j.x(), pts_j.y()}));
+      tmp_feature.observation.push_back(make_pair(imu_j, Eigen::Vector3d{pts_j.x(), pts_j.y(),pts_j.z()}));
     }
     sfm_f.push_back(tmp_feature);
   }
@@ -272,9 +275,9 @@ bool Estimator::initialStructure() {
     ROS_INFO("Not enough features or parallax; Move device around");
     return false;
   }
-  GlobalSFM sfm;
-  if (!sfm.construct(frame_count + 1, Q, T, l, relative_R, relative_T, sfm_f, sfm_tracked_points)) {
-    ROS_WARN("global SFM failed!");
+
+  if (!globalSFM(frame_count + 1, Q, T, l, relative_R, relative_T, sfm_f, sfm_tracked_points)) {
+    ROS_INFO("global SFM failed!");
     marginalization_flag = MARGIN_OLD;
     return false;
   }
@@ -322,11 +325,11 @@ bool Estimator::initialStructure() {
     cv::Mat K = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 1, 0, 0, 0, 1);
     if (pts_3_vector.size() < 6) {
       cout << "pts_3_vector size " << pts_3_vector.size() << endl;
-      ROS_DEBUG("Not enough points for solve pnp !");
+      ROS_INFO("Not enough points for solve pnp !");
       return false;
     }
     if (!cv::solvePnP(pts_3_vector, pts_2_vector, K, D, rvec, t, 1)) {
-      ROS_DEBUG("solve pnp fail!");
+      ROS_INFO("solve pnp fail!");
       return false;
     }
     cv::Rodrigues(rvec, r);
@@ -420,6 +423,7 @@ bool Estimator::visualInitialAlign() {
 bool Estimator::relativePose(Matrix3d& relative_R, Vector3d& relative_T, int& l) {
   // find previous frame which contains enough correspondence and parallax with newest frame
   for (int i = 0; i < frame_count; i++) {
+    // 2x point 3D per frame and feature
     vector<pair<Vector3d, Vector3d>> corres;
     corres = f_manager.getCorresponding(i, frame_count);
     if (corres.size() > 20) {
@@ -798,9 +802,9 @@ void Estimator::optimization() {
   }else{
     ROS_WARN("Unknown marginalization type");
   }
-  ROS_DEBUG("whole marginalization costs: %f", t_whole_marginalization.toc());
+  // ROS_DEBUG("whole marginalization costs: %f", t_whole_marginalization.toc());
 
-  ROS_DEBUG("whole time for ceres: %f", t_whole.toc());
+  // ROS_DEBUG("whole time for ceres: %f", t_whole.toc());
 }
 
 void Estimator::marginalizeNew(){
@@ -955,18 +959,18 @@ void Estimator::marginalizeOld(){
         marginalization_info->addResidualBlockInfo(residual_block_info);
       }
     }
-    ROS_INFO("preparation of margin blocks %f ms", t_margin_prep.toc());
+    // ROS_INFO("preparation of margin blocks %f ms", t_margin_prep.toc());
 
     Timer::start("old_margin_preMarginal");
     TicToc t_pre_margin;
     marginalization_info->preMarginalize();
-    ROS_INFO("pre marginalization %f ms", t_pre_margin.toc());
+    // ROS_INFO("pre marginalization %f ms", t_pre_margin.toc());
     Timer::stop("old_margin_preMarginal");
 
     Timer::start("old_margin_Marginal");
     TicToc t_margin;
     marginalization_info->marginalize();
-    ROS_INFO("marginalization %f ms", t_margin.toc());
+    // ROS_INFO("marginalization %f ms", t_margin.toc());
     Timer::stop("old_margin_Marginal");
 
     TicToc t_margin_finish;
@@ -986,7 +990,7 @@ void Estimator::marginalizeOld(){
       delete last_marginalization_info;
     last_marginalization_info = marginalization_info;
     last_marginalization_parameter_blocks = parameter_blocks;
-    ROS_INFO("finish of margin blocks %f ms", t_margin_finish.toc());
+    // ROS_INFO("finish of margin blocks %f ms", t_margin_finish.toc());
     Timer::stop("old_margin_solving");
 }
 

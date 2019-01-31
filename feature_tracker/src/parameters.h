@@ -8,6 +8,7 @@ extern int FOCAL_LENGTH;
 const int NUM_OF_CAM = 1;
 
 extern std::string IMAGE_TOPIC;
+extern std::string DEPTH_IMAGE_TOPIC;
 extern std::string IMU_TOPIC;
 extern std::string FISHEYE_MASK;
 extern std::vector<std::string> CAM_NAMES;
@@ -28,6 +29,7 @@ extern std::string ALG;
 extern bool ADAPTIVE_THRESHOLD;
 extern bool EDGE_PREFERENCE;
 extern bool ENABLE_F_REJECTION;
+extern bool RGBD_CAM;
 
 template <typename T>
 T readROSParam(ros::NodeHandle& n, const std::string& name) {
