@@ -30,6 +30,7 @@ extern bool ADAPTIVE_THRESHOLD;
 extern bool EDGE_PREFERENCE;
 extern bool ENABLE_F_REJECTION;
 extern bool RGBD_CAM;
+extern int INIT_MAX_CNT;
 
 template <typename T>
 T readROSParam(ros::NodeHandle& n, const std::string& name) {

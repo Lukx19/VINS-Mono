@@ -43,6 +43,7 @@ extrinsicTranslation: !!opencv-matrix
 
 #feature traker paprameters
 max_cnt: 100            # max feature number in feature tracking
+init_max_cnt: 100       # max feature number at the initialization phase
 min_dist: 30            # min distance between two features in pixels
 freq: 10                # frequence (Hz) of publish tracking result. At least 10Hz for good estimation. If set 0, the frequence will be same as raw image
 fundamental_matrix_rejection: 1

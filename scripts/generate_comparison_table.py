@@ -32,7 +32,7 @@ def genMetricsTable(experiment_folder,result_dir):
                     table.loc[experiment_name, dataset] = json_data[category][df_field]
                 else:
                     table.loc[experiment_name, dataset] = None
-        experiment_name = experiment + "/scale
+        experiment_name = experiment + "/scale"
         if experiment_name not in table.index:
             table = table.append(pd.Series(name=experiment_name))
         table.loc[experiment_name, dataset] = json_data["scale"]

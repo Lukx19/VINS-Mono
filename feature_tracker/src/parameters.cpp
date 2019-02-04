@@ -25,6 +25,7 @@ bool ADAPTIVE_THRESHOLD;
 bool EDGE_PREFERENCE;
 bool ENABLE_F_REJECTION;
 bool RGBD_CAM;
+int INIT_MAX_CNT;
 std::string ALG;
 
 void readParameters(ros::NodeHandle& n) {
@@ -66,6 +67,7 @@ void readParameters(ros::NodeHandle& n) {
   EDGE_PREFERENCE = readParam<int>(fsSettings["strong_edge_keypoint_preference"], 0);
   ENABLE_F_REJECTION = readParam<int>(fsSettings["fundamental_matrix_rejection"], 1);
   RGBD_CAM = readParam<int>(fsSettings["rgbd_camera"], 0);
+  INIT_MAX_CNT = readParam<int>(fsSettings["init_max_cnt"], MAX_CNT);
   if (FREQ == 0)
     FREQ = 100;
 

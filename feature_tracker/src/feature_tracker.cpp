@@ -144,7 +144,7 @@ FeatureTracker::FeatureTracker() {
 }
 
 void FeatureTracker::useInitTracking() {
-  max_num_features_ = 150;
+  max_num_features_ = static_cast<size_t>(INIT_MAX_CNT);
   init_tracking_ = true;
   max_num_features_region_ = (max_num_features_ / (BLOCK_PER_ROW * BLOCK_PER_COL));
 }
