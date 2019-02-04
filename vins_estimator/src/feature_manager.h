@@ -17,7 +17,7 @@ using namespace Eigen;
 
 class FeaturePerFrame {
 public:
-  FeaturePerFrame(const Eigen::Matrix<double, 7, 1>& _point, double td) {
+  FeaturePerFrame(const Eigen::Matrix<double, 7, 1>& _point, double td, double _depth = -1) {
     point.x() = _point(0);
     point.y() = _point(1);
     point.z() = _point(2);
@@ -26,6 +26,7 @@ public:
     velocity.x() = _point(5);
     velocity.y() = _point(6);
     cur_td = td;
+    depth = _depth;
   }
   double cur_td;
   Vector3d point;
@@ -37,6 +38,7 @@ public:
   MatrixXd A;
   VectorXd b;
   double dep_gradient;
+  double depth;
 };
 
 class FeaturePerId {
@@ -66,7 +68,7 @@ public:
 
 class FeatureManager {
 public:
-  FeatureManager(const Matrix3d * _Rs);
+  FeatureManager(const Matrix3d * _Rs,bool has_rgbd_cam = false);
 
   void setRic(Matrix3d _ric[]);
 
@@ -102,6 +104,7 @@ private:
   const Matrix3d* Rs;
   Matrix3d ric[NUM_OF_CAM];
   size_t max_frame_count_;
+  bool rgbd_cam_;
 };
 
 #endif

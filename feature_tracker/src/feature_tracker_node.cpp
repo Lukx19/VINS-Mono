@@ -1,6 +1,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/Imu.h>
@@ -84,9 +85,15 @@ void publish_results(const std_msgs::Header &header,const cv::Mat & depth_uv = c
         p.x = un_pts[j].x;
         p.y = un_pts[j].y;
         if(available_depth){
-          p.z = depth_uv.at<float>(cur_pts[j].y, cur_pts[j].x);
+          double depth = depth_uv.at<float>(cur_pts[j].y, cur_pts[j].x);
+          // std::cout << depth<<"  ";
+          if (depth > 0) {
+            p.z = depth;
+          }else{
+            p.z = -1;
+          }
         }else{
-          p.z = 0;
+          p.z = -1;
         }
 
         feature_points->points.push_back(p);
@@ -234,6 +241,7 @@ void img_callback(const sensor_msgs::ImageConstPtr& img_msg) {
 
 void depth_img_callback(const sensor_msgs::ImageConstPtr& image,
                         const sensor_msgs::ImageConstPtr& depth_image) {
+  // ROS_INFO("depth image arrived");
   bool pub_this_frame = process_img(image);
   if (pub_this_frame) {
     cv_bridge::CvImageConstPtr depth_img_cv;
@@ -241,7 +249,8 @@ void depth_img_callback(const sensor_msgs::ImageConstPtr& image,
     depth_img_cv = cv_bridge::toCvShare(depth_image,depth_image->encoding);
     // Convert the uints to floats
     depth_img_cv->image.convertTo(depth_mat, CV_32F, 0.001);
-    publish_results(image->header,depth_mat);
+    // std::cout << depth_mat << std::endl;
+    publish_results(image->header, depth_mat);
     publish_visualizations(image);
   }
 }
@@ -278,9 +287,13 @@ int main(int argc, char** argv) {
     }
   }
   ros::Subscriber sub_img;
-  message_filters::Subscriber<sensor_msgs::Image> image_sub(n, IMAGE_TOPIC, 100);
-  message_filters::Subscriber<sensor_msgs::Image> image_depth_sub(n, DEPTH_IMAGE_TOPIC, 100);
-  message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::Image> sync(image_sub, image_depth_sub, 100);
+  message_filters::Subscriber<sensor_msgs::Image> image_sub(n, IMAGE_TOPIC, 1);
+  message_filters::Subscriber<sensor_msgs::Image> image_depth_sub(n, DEPTH_IMAGE_TOPIC, 1);
+  using MySyncPolicy=message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image>;
+  // ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(10)
+  message_filters::Synchronizer<MySyncPolicy> sync(MySyncPolicy(3), image_sub, image_depth_sub);
+
+  // message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::Image> sync(image_sub, image_depth_sub, 100);
   if (RGBD_CAM) {
     sync.registerCallback(boost::bind(&depth_img_callback, _1, _2));
   } else {

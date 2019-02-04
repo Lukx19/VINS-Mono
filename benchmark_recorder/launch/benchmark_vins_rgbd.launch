@@ -12,9 +12,9 @@
         <arg name="config_path" value="$(arg config_path)" />
         <arg name="vins_path" value="$(arg vins_path)" />
     </include>
-
+<!-- $(arg play_bag_flags) -->
     <node pkg="rosbag" type="play" name="player" output="log"
-        args="$(arg dataset_folder)/$(arg sequence_name).bag $(arg play_bag_flags)" />
+        args="$(arg dataset_folder)/$(arg sequence_name).bag --clock -s190 -u80 " />
 
     <node name="benchmark_recorder" pkg="benchmark_recorder" type="benchmark_recorder" required="true" output="screen">
         <param name="rec_file" type="string" value="$(arg record_file)" />

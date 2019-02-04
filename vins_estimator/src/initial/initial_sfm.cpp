@@ -1,4 +1,5 @@
 #include "initial_sfm.h"
+#include <ros/ros.h>
 
 using namespace std;
 using namespace Eigen;
@@ -119,11 +120,12 @@ void triangulatePointWithDepth(const Eigen::Matrix<double, 3, 4>& pose0,
   pose_b.matrix().block<3, 4>(0, 0) = pose1;
   Eigen::Vector3d pt_a = toImage3DCoords(point0);
   Eigen::Vector3d pt_b = toImage3DCoords(point1);
+
   Eigen::Vector3d pt_a_w = (pose_a.inverse() * pt_a);
   Eigen::Vector3d pt_b_w = (pose_b.inverse() * pt_b);
   // point_3d = (pt_a_w+pt_b_w) / 2;
   point_3d = pt_a_w;
-  std::cout << pt_a_w - pt_b_w << ", " << std::endl;
+  ROS_INFO_STREAM("predicted diff"<<(pt_b_w - pt_a_w).transpose() << ", ");
 }
 
 void triangulateWithDepth(int frame0, const Eigen::Matrix<double, 3, 4>& Pose0, int frame1,
@@ -150,12 +152,18 @@ void triangulateWithDepth(int frame0, const Eigen::Matrix<double, 3, 4>& Pose0, 
       }
     }
     if (has_0 && has_1 && point0(2) > 0 && point1(2) > 0) {
-      Vector3d point_3d;
+      Eigen::Vector3d point_3d;
       triangulatePointWithDepth(Pose0, Pose1, point0, point1, point_3d);
-      sfm_f[j].state = true;
-      sfm_f[j].position[0] = point_3d(0);
-      sfm_f[j].position[1] = point_3d(1);
-      sfm_f[j].position[2] = point_3d(2);
+      // if (sfm_f[j].state == true){
+        // Eigen::Vector3d point_3d_triag(sfm_f[j].position[0],sfm_f[j].position[1],sfm_f[j].position[2]);
+        // ROS_INFO_STREAM( "diff" << (point_3d - point_3d_triag).transpose());
+      // }else{
+        sfm_f[j].state = true;
+        sfm_f[j].position[0] = point_3d(0);
+        sfm_f[j].position[1] = point_3d(1);
+        sfm_f[j].position[2] = point_3d(2);
+      // }
+
       // cout << "trangulated : " << frame1 << "  3d point : "  << j << "  " << point_3d.transpose()
       // << endl;
     }
@@ -172,7 +180,7 @@ void triangulateWithDepth(int frame0, const Eigen::Matrix<double, 3, 4>& Pose0, 
 // relative_t[i][j]  j_t_ji  (j < i)
 bool globalSFM(int frame_num, Quaterniond* q, Vector3d* T, int l, const Matrix3d& relative_R,
                const Vector3d& relative_T, vector<SFMFeature>& sfm_f,
-               map<int, Vector3d>& sfm_tracked_points) {
+               map<int, Vector3d>& sfm_tracked_points,bool use_depth) {
   size_t feature_num = sfm_f.size();
   // cout << "set 0 and " << l << " as known " << endl;
   // have relative_r relative_t
@@ -227,7 +235,9 @@ bool globalSFM(int frame_num, Quaterniond* q, Vector3d* T, int l, const Matrix3d
     }
 
     // triangulate point based on the solve pnp result
-    triangulateWithDepth(i, Pose[i], frame_num - 1, Pose[frame_num - 1], sfm_f);
+    if(use_depth){
+      triangulateWithDepth(i, Pose[i], frame_num - 1, Pose[frame_num - 1], sfm_f);
+    }
     triangulateTwoFrames(i, Pose[i], frame_num - 1, Pose[frame_num - 1], sfm_f);
   }
   // 3: triangulate l-----l+1 l+2 ... frame_num -2

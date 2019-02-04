@@ -76,7 +76,7 @@ void triangulateWithDepth(int frame0, const Eigen::Matrix<double, 3, 4>& Pose0, 
 
 bool globalSFM(int frame_num, Eigen::Quaterniond* q, Eigen::Vector3d* T, int l,
                const Eigen::Matrix3d& relative_R, const Eigen::Vector3d& relative_T,
-               std::vector<SFMFeature>& sfm_f, std::map<int, Eigen::Vector3d>& sfm_tracked_points);
+               std::vector<SFMFeature>& sfm_f, std::map<int, Eigen::Vector3d>& sfm_tracked_points,bool use_depth=false);
 // class GlobalSFM {
 // public:
 //   GlobalSFM();

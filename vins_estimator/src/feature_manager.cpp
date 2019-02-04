@@ -4,7 +4,7 @@ int FeaturePerId::endFrame() {
   return start_frame + feature_per_frame.size() - 1;
 }
 
-FeatureManager::FeatureManager(const Matrix3d * _Rs) : Rs(_Rs), max_frame_count_(0) {
+FeatureManager::FeatureManager(const Matrix3d * _Rs, bool has_rgbd_cam) : Rs(_Rs), max_frame_count_(0),rgbd_cam_(has_rgbd_cam) {
   for (int i = 0; i < NUM_OF_CAM; i++){
     ric[i].setIdentity();
   }
@@ -59,7 +59,9 @@ void FeatureManager::addFeatures(
   // int parallax_num = 0;
   last_track_num = 0;
   for (auto& id_pts : image) {
-    FeaturePerFrame f_per_fra(id_pts.second[0].second, td);
+    double depth = id_pts.second[0].second(2);
+    FeaturePerFrame f_per_fra(id_pts.second[0].second, td, depth);
+    f_per_fra.point(2) = 1;
 
     int feature_id = id_pts.first;
     auto it = find_if(feature.begin(), feature.end(),
@@ -221,6 +223,7 @@ void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[]) 
 
     if (it_per_id.estimated_depth > 0)
       continue;
+
     int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
 
     ROS_ASSERT(NUM_OF_CAM == 1);
@@ -243,7 +246,13 @@ void FeatureManager::triangulate(Vector3d Ps[], Vector3d tic[], Matrix3d ric[]) 
       Eigen::Matrix<double, 3, 4> P;
       P.leftCols<3>() = R.transpose();
       P.rightCols<1>() = -R.transpose() * t;
-      Eigen::Vector3d f = it_per_frame.point.normalized();
+
+      Eigen::Vector3d f = it_per_frame.point;
+      // in case we have depth from RGBD than use it
+      // if(it_per_frame.depth > 0){
+      //   f.z() = it_per_frame.depth;
+      // }
+      f = f.normalized();
       svd_A.row(svd_idx++) = f[0] * P.row(2) - f[2] * P.row(0);
       svd_A.row(svd_idx++) = f[1] * P.row(2) - f[2] * P.row(1);
 

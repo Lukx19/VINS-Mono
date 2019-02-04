@@ -18,6 +18,21 @@
     </node> -->
 
 
+    <node pkg="nodelet" type="nodelet" args="manager" name="nodelet_manager" />
+    <node pkg="nodelet" type="nodelet" name="vins_convert_depth" args="load stereo_image_proc/disparity nodelet_manager">
+        <remap from="image_raw" to="/camera/depth/image_raw"/>
+        <remap from="image" to="/camera/depth/image_converted"/>
+    </node>
+
+    <node pkg="nodelet" type="nodelet" name="vins_rect_depth" args="load depth_image_proc/register nodelet_manager">
+        <remap from="depth/camera_info" to="/camera/depth/camera_info"/>
+        <remap from="depth/image_rect" to="/camera/depth/image_converted"/>
+        <remap from="rgb/camera_info" to="/camera/rgb/camera_info"/>
+        <remap from="depth_registered/image_rect" to="/camera/depth/image_rect"/>
+        <remap from="depth_registered/camera_info" to="/camera/depth/camera_info_rect"/>
+    </node>
+
+
     <node name="feature_tracker" pkg="feature_tracker" type="feature_tracker" output="screen">
         <param name="config_file" type="string" value="$(arg config_path)" />
         <param name="vins_folder" type="string" value="$(arg vins_path)" />

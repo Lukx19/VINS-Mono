@@ -37,7 +37,7 @@ void readParameters(ros::NodeHandle& n) {
   std::string VINS_FOLDER_PATH = readROSParam<std::string>(n, "vins_folder");
 
   fsSettings["image_topic"] >> IMAGE_TOPIC;
-  fsSettings["depth_topic: "] >> DEPTH_IMAGE_TOPIC;
+  fsSettings["depth_topic"] >> DEPTH_IMAGE_TOPIC;
   fsSettings["imu_topic"] >> IMU_TOPIC;
   MAX_CNT = fsSettings["max_cnt"];
   std::cout << MAX_CNT << std::endl;

@@ -123,17 +123,17 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
   f_manager.addFeatures(frame_count, image, td);
   bool is_keyframe = f_manager.shouldBeKeyframe(frame_count);
   if (is_keyframe)
-    if(frame_count < WINDOW_SIZE){
+    if (frame_count < WINDOW_SIZE) {
       marginalization_flag = MARGIN_NONE;
-    }else{
+    } else {
       marginalization_flag = MARGIN_OLD;
     }
-  else{
+  else {
     marginalization_flag = MARGIN_SECOND_NEW;
   }
 
   ROS_INFO("this frame marginalization--------------------%i", marginalization_flag);
-  ROS_DEBUG("%s", is_keyframe ?"Keyframe": "Non-keyframe");
+  ROS_DEBUG("%s", is_keyframe ? "Keyframe" : "Non-keyframe");
   ROS_DEBUG("Solving %d", frame_count);
   ROS_DEBUG("number of feature: %d", f_manager.getFeatureCount());
   Headers[frame_count] = header;
@@ -170,15 +170,16 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
       if (result) {
         solver_flag = NON_LINEAR;
         ROS_INFO("Initialization finish!");
-      } else{
-          slideWindow();
+      } else {
+        slideWindow();
       }
-    }else{
-      // TODO: if frame is not keyframe than remove it and modify initialization to include some marginalization of new frame
+    } else {
+      // TODO: if frame is not keyframe than remove it and modify initialization to include some
+      // marginalization of new frame
       ++frame_count;
     }
   }
-  if (solver_flag == NON_LINEAR){
+  if (solver_flag == NON_LINEAR) {
     TicToc t_solve;
 
     Timer::start("Estimator:triangulate");
@@ -189,7 +190,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
     optimization();
     Timer::stop("Estimator:solving least squares");
 
-    if(frame_count == WINDOW_SIZE ||  marginalization_flag != MARGIN_NONE){
+    if (frame_count == WINDOW_SIZE || marginalization_flag != MARGIN_NONE) {
       slideWindow();
     }
     f_manager.removeFailures();
@@ -206,7 +207,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
 
     // prepare output of VINS
     key_poses.clear();
-    for (size_t i = 0; i <= frame_count; ++i){
+    for (size_t i = 0; i <= frame_count; ++i) {
       key_poses.push_back(Ps[i]);
     }
 
@@ -215,7 +216,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
     last_R0 = Rs[0];
     last_P0 = Ps[0];
 
-    if (frame_count < WINDOW_SIZE &&  marginalization_flag == MARGIN_NONE){
+    if (frame_count < WINDOW_SIZE && marginalization_flag == MARGIN_NONE) {
       ++frame_count;
     }
   }
@@ -264,7 +265,8 @@ bool Estimator::initialStructure() {
     for (auto& it_per_frame : it_per_id.feature_per_frame) {
       imu_j++;
       Vector3d pts_j = it_per_frame.point;
-      tmp_feature.observation.push_back(make_pair(imu_j, Eigen::Vector3d{pts_j.x(), pts_j.y(),pts_j.z()}));
+      tmp_feature.observation.push_back(
+          make_pair(imu_j, Eigen::Vector3d{pts_j.x(), pts_j.y(), it_per_frame.depth}));
     }
     sfm_f.push_back(tmp_feature);
   }
@@ -276,7 +278,8 @@ bool Estimator::initialStructure() {
     return false;
   }
 
-  if (!globalSFM(frame_count + 1, Q, T, l, relative_R, relative_T, sfm_f, sfm_tracked_points)) {
+  if (!globalSFM(frame_count + 1, Q, T, l, relative_R, relative_T, sfm_f, sfm_tracked_points,
+                 RGBD_CAM)) {
     ROS_INFO("global SFM failed!");
     marginalization_flag = MARGIN_OLD;
     return false;
@@ -342,11 +345,15 @@ bool Estimator::initialStructure() {
     frame_it->second.R = R_pnp * RIC[0].transpose();
     frame_it->second.T = T_pnp;
   }
-  if (visualInitialAlign())
+  if (USE_IMU) {
+    if (visualInitialAlign())
+      return true;
+    else {
+      ROS_INFO("misalign visual structure with IMU");
+      return false;
+    }
+  } else {
     return true;
-  else {
-    ROS_INFO("misalign visual structure with IMU");
-    return false;
   }
 }
 
@@ -590,14 +597,17 @@ bool Estimator::failureDetection() {
     ROS_INFO(" little feature %d", f_manager.last_track_num);
     // return true;
   }
-  if (Bas[frame_count].norm() > 2.5) {
-    ROS_WARN(" big IMU acc bias estimation %f", Bas[frame_count].norm());
-    return true;
+  if (USE_IMU) {
+    if (Bas[frame_count].norm() > 2.5) {
+      ROS_WARN(" big IMU acc bias estimation %f", Bas[frame_count].norm());
+      return true;
+    }
+    if (Bgs[frame_count].norm() > 1.0) {
+      ROS_WARN(" big IMU gyr bias estimation %f", Bgs[frame_count].norm());
+      return true;
+    }
   }
-  if (Bgs[frame_count].norm() > 1.0) {
-    ROS_WARN(" big IMU gyr bias estimation %f", Bgs[frame_count].norm());
-    return true;
-  }
+
   /*
   if (tic(0) > 1)
   {
@@ -643,7 +653,9 @@ void Estimator::optimization() {
     if (MOTION_VIO && i < frame_count && !visible[i]) {
       problem.SetParameterBlockConstant(para_Pose[i]);
     }
-    problem.AddParameterBlock(para_SpeedBias[i], SIZE_SPEEDBIAS);
+    if (USE_IMU) {
+      problem.AddParameterBlock(para_SpeedBias[i], SIZE_SPEEDBIAS);
+    }
   }
   std::cout << std::endl;
   for (int i = 0; i < NUM_OF_CAM; i++) {
@@ -669,20 +681,22 @@ void Estimator::optimization() {
         new MarginalizationFactor(last_marginalization_info);
     problem.AddResidualBlock(marginalization_factor, NULL, last_marginalization_parameter_blocks);
   }
-
-  for (int i = 0; i < frame_count; i++) {
-    int j = i + 1;
-    if (pre_integrations[j]->sum_dt > 10.0)
-      continue;
-    IMUFactor* imu_factor = new IMUFactor(pre_integrations[j]);
-    problem.AddResidualBlock(imu_factor, NULL, para_Pose[i], para_SpeedBias[i], para_Pose[j],
-                             para_SpeedBias[j]);
+  if (USE_IMU) {
+    for (int i = 0; i < frame_count; i++) {
+      int j = i + 1;
+      if (pre_integrations[j]->sum_dt > 10.0)
+        continue;
+      IMUFactor* imu_factor = new IMUFactor(pre_integrations[j]);
+      problem.AddResidualBlock(imu_factor, NULL, para_Pose[i], para_SpeedBias[i], para_Pose[j],
+                               para_SpeedBias[j]);
+    }
   }
+
   int f_m_cnt = 0;
   int feature_index = -1;
   for (auto& it_per_id : f_manager.feature) {
     it_per_id.used_num = it_per_id.feature_per_frame.size();
-    if (!(it_per_id.used_num >= 2 && it_per_id.start_frame +2 < frame_count))
+    if (!(it_per_id.used_num >= 2 && it_per_id.start_frame + 2 < frame_count))
       continue;
 
     ++feature_index;
@@ -740,7 +754,7 @@ void Estimator::optimization() {
     int feature_index = -1;
     for (auto& it_per_id : f_manager.feature) {
       it_per_id.used_num = it_per_id.feature_per_frame.size();
-      if (!(it_per_id.used_num >= 2 && it_per_id.start_frame +2 < frame_count))
+      if (!(it_per_id.used_num >= 2 && it_per_id.start_frame + 2 < frame_count))
         continue;
       ++feature_index;
       int start = it_per_id.start_frame;
@@ -795,11 +809,11 @@ void Estimator::optimization() {
   TicToc t_whole_marginalization;
   if (marginalization_flag == MARGIN_OLD) {
     marginalizeOld();
-  } else if (marginalization_flag == MARGIN_SECOND_NEW){
+  } else if (marginalization_flag == MARGIN_SECOND_NEW) {
     marginalizeNew();
-  }else if (marginalization_flag == MARGIN_NONE){
+  } else if (marginalization_flag == MARGIN_NONE) {
     // do nothing
-  }else{
+  } else {
     ROS_WARN("Unknown marginalization type");
   }
   // ROS_DEBUG("whole marginalization costs: %f", t_whole_marginalization.toc());
@@ -807,86 +821,18 @@ void Estimator::optimization() {
   // ROS_DEBUG("whole time for ceres: %f", t_whole.toc());
 }
 
-void Estimator::marginalizeNew(){
+void Estimator::marginalizeNew() {
   Timer::start("new_margin_solving");
-    if (last_marginalization_info &&
-        std::count(std::begin(last_marginalization_parameter_blocks),
-                   std::end(last_marginalization_parameter_blocks), para_Pose[frame_count - 1])) {
-      MarginalizationInfo* marginalization_info = new MarginalizationInfo();
-      vector2double();
-      if (last_marginalization_info) {
-        vector<int> drop_set;
-        for (int i = 0; i < static_cast<int>(last_marginalization_parameter_blocks.size()); i++) {
-          ROS_ASSERT(last_marginalization_parameter_blocks[i] != para_SpeedBias[frame_count - 1]);
-          if (last_marginalization_parameter_blocks[i] == para_Pose[frame_count - 1])
-            drop_set.push_back(i);
-        }
-        // construct new marginlization_factor
-        MarginalizationFactor* marginalization_factor =
-            new MarginalizationFactor(last_marginalization_info);
-        ResidualBlockInfo* residual_block_info = new ResidualBlockInfo(
-            marginalization_factor, NULL, last_marginalization_parameter_blocks, drop_set);
-
-        marginalization_info->addResidualBlockInfo(residual_block_info);
-      }
-
-      TicToc t_pre_margin;
-      ROS_DEBUG("begin marginalization");
-      Timer::start("new_margin_preMarginal");
-      marginalization_info->preMarginalize();
-      Timer::stop("new_margin_preMarginal");
-      ROS_DEBUG("end pre marginalization, %f ms", t_pre_margin.toc());
-
-      TicToc t_margin;
-      ROS_DEBUG("begin marginalization");
-      Timer::start("new_margin_Marginal");
-      marginalization_info->marginalize();
-      Timer::stop("new_margin_Marginal");
-      ROS_DEBUG("end marginalization, %f ms", t_margin.toc());
-
-      std::unordered_map<long, double*> addr_shift;
-      for (int i = 0; i <= frame_count; i++) {
-        if (i == frame_count - 1)
-          continue;
-        else if (i == frame_count) {
-          addr_shift[reinterpret_cast<long>(para_Pose[i])] = para_Pose[i - 1];
-          addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i - 1];
-        } else {
-          addr_shift[reinterpret_cast<long>(para_Pose[i])] = para_Pose[i];
-          addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i];
-        }
-      }
-      for (int i = 0; i < NUM_OF_CAM; i++)
-        addr_shift[reinterpret_cast<long>(para_Ex_Pose[i])] = para_Ex_Pose[i];
-      if (ESTIMATE_TD) {
-        addr_shift[reinterpret_cast<long>(para_Td[0])] = para_Td[0];
-      }
-
-      vector<double*> parameter_blocks = marginalization_info->getParameterBlocks(addr_shift);
-      if (last_marginalization_info)
-        delete last_marginalization_info;
-      last_marginalization_info = marginalization_info;
-      last_marginalization_parameter_blocks = parameter_blocks;
-    }
-    Timer::stop("new_margin_solving");
-}
-
-
-void Estimator::marginalizeOld(){
-    Timer::start("old_margin_solving");
+  if (last_marginalization_info &&
+      std::count(std::begin(last_marginalization_parameter_blocks),
+                 std::end(last_marginalization_parameter_blocks), para_Pose[frame_count - 1])) {
     MarginalizationInfo* marginalization_info = new MarginalizationInfo();
-    Eigen::Matrix2d sqrt_info = FOCAL_LENGTH / 1.5 * Matrix2d::Identity();
-    ceres::LossFunction* loss_function;
-    // loss_function = new ceres::HuberLoss(1.0);
-    loss_function = new ceres::CauchyLoss(1.0);
-    TicToc t_margin_prep;
     vector2double();
-
     if (last_marginalization_info) {
       vector<int> drop_set;
       for (int i = 0; i < static_cast<int>(last_marginalization_parameter_blocks.size()); i++) {
-        if (last_marginalization_parameter_blocks[i] == para_Pose[0] ||
-            last_marginalization_parameter_blocks[i] == para_SpeedBias[0])
+        ROS_ASSERT(last_marginalization_parameter_blocks[i] != para_SpeedBias[frame_count - 1]);
+        if (last_marginalization_parameter_blocks[i] == para_Pose[frame_count - 1])
           drop_set.push_back(i);
       }
       // construct new marginlization_factor
@@ -898,100 +844,173 @@ void Estimator::marginalizeOld(){
       marginalization_info->addResidualBlockInfo(residual_block_info);
     }
 
-    {
-      int feature_index = -1;
-      for (auto& it_per_id : f_manager.feature) {
-        it_per_id.used_num = it_per_id.feature_per_frame.size();
-        if ((it_per_id.used_num < 2 || it_per_id.start_frame +2 >= frame_count))
-          continue;
+    TicToc t_pre_margin;
+    ROS_DEBUG("begin marginalization");
+    Timer::start("new_margin_preMarginal");
+    marginalization_info->preMarginalize();
+    Timer::stop("new_margin_preMarginal");
+    ROS_DEBUG("end pre marginalization, %f ms", t_pre_margin.toc());
 
-        ++feature_index;
+    TicToc t_margin;
+    ROS_DEBUG("begin marginalization");
+    Timer::start("new_margin_Marginal");
+    marginalization_info->marginalize();
+    Timer::stop("new_margin_Marginal");
+    ROS_DEBUG("end marginalization, %f ms", t_margin.toc());
 
-        int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
-        if (imu_i != 0)
-          continue;
-
-        Vector3d pts_i = it_per_id.feature_per_frame[0].point;
-
-        for (auto& it_per_frame : it_per_id.feature_per_frame) {
-          imu_j++;
-          if (imu_i == imu_j)
-            continue;
-
-          Vector3d pts_j = it_per_frame.point;
-          if (ESTIMATE_TD) {
-            ProjectionTdFactor* f_td = new ProjectionTdFactor(
-                pts_i, pts_j, it_per_id.feature_per_frame[0].velocity, it_per_frame.velocity,
-                it_per_id.feature_per_frame[0].cur_td, it_per_frame.cur_td,
-                it_per_id.feature_per_frame[0].uv.y(), it_per_frame.uv.y());
-            ResidualBlockInfo* residual_block_info = new ResidualBlockInfo(
-                f_td, loss_function,
-                vector<double*>{para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0],
-                                para_Feature[feature_index], para_Td[0]},
-                vector<int>{0, 3});
-            marginalization_info->addResidualBlockInfo(residual_block_info);
-          } else {
-            ceres::CostFunction* f;
-            if (AUTOGRAD) {
-              f = new ceres::AutoDiffCostFunction<ProjectionFactorAuto, 2, 7, 7, 7, 1>(
-                  new ProjectionFactorAuto(pts_i, pts_j, sqrt_info));
-            } else {
-              f = new ProjectionFactor(pts_i, pts_j);
-            }
-            ResidualBlockInfo* residual_block_info =
-                new ResidualBlockInfo(f, loss_function,
-                                      vector<double*>{para_Pose[imu_i], para_Pose[imu_j],
-                                                      para_Ex_Pose[0], para_Feature[feature_index]},
-                                      vector<int>{0, 3});
-            marginalization_info->addResidualBlockInfo(residual_block_info);
-          }
+    std::unordered_map<long, double*> addr_shift;
+    for (int i = 0; i <= frame_count; i++) {
+      if (i == frame_count - 1)
+        continue;
+      else if (i == frame_count) {
+        addr_shift[reinterpret_cast<long>(para_Pose[i])] = para_Pose[i - 1];
+        if (USE_IMU) {
+          addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i - 1];
+        }
+      } else {
+        addr_shift[reinterpret_cast<long>(para_Pose[i])] = para_Pose[i];
+        if (USE_IMU) {
+          addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i];
         }
       }
-    }
-
-    {
-      if (pre_integrations[1]->sum_dt < 10.0) {
-        IMUFactor* imu_factor = new IMUFactor(pre_integrations[1]);
-        ResidualBlockInfo* residual_block_info = new ResidualBlockInfo(
-            imu_factor, NULL,
-            vector<double*>{para_Pose[0], para_SpeedBias[0], para_Pose[1], para_SpeedBias[1]},
-            vector<int>{0, 1});
-        marginalization_info->addResidualBlockInfo(residual_block_info);
-      }
-    }
-    // ROS_INFO("preparation of margin blocks %f ms", t_margin_prep.toc());
-
-    Timer::start("old_margin_preMarginal");
-    TicToc t_pre_margin;
-    marginalization_info->preMarginalize();
-    // ROS_INFO("pre marginalization %f ms", t_pre_margin.toc());
-    Timer::stop("old_margin_preMarginal");
-
-    Timer::start("old_margin_Marginal");
-    TicToc t_margin;
-    marginalization_info->marginalize();
-    // ROS_INFO("marginalization %f ms", t_margin.toc());
-    Timer::stop("old_margin_Marginal");
-
-    TicToc t_margin_finish;
-    std::unordered_map<long, double*> addr_shift;
-    for (int i = 1; i <= frame_count; i++) {
-      addr_shift[reinterpret_cast<long>(para_Pose[i])] = para_Pose[i - 1];
-      addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i - 1];
     }
     for (int i = 0; i < NUM_OF_CAM; i++)
       addr_shift[reinterpret_cast<long>(para_Ex_Pose[i])] = para_Ex_Pose[i];
     if (ESTIMATE_TD) {
       addr_shift[reinterpret_cast<long>(para_Td[0])] = para_Td[0];
     }
-    vector<double*> parameter_blocks = marginalization_info->getParameterBlocks(addr_shift);
 
+    vector<double*> parameter_blocks = marginalization_info->getParameterBlocks(addr_shift);
     if (last_marginalization_info)
       delete last_marginalization_info;
     last_marginalization_info = marginalization_info;
     last_marginalization_parameter_blocks = parameter_blocks;
-    // ROS_INFO("finish of margin blocks %f ms", t_margin_finish.toc());
-    Timer::stop("old_margin_solving");
+  }
+  Timer::stop("new_margin_solving");
+}
+
+void Estimator::marginalizeOld() {
+  Timer::start("old_margin_solving");
+  MarginalizationInfo* marginalization_info = new MarginalizationInfo();
+  Eigen::Matrix2d sqrt_info = FOCAL_LENGTH / 1.5 * Matrix2d::Identity();
+  ceres::LossFunction* loss_function;
+  // loss_function = new ceres::HuberLoss(1.0);
+  loss_function = new ceres::CauchyLoss(1.0);
+  TicToc t_margin_prep;
+  vector2double();
+
+  if (last_marginalization_info) {
+    vector<int> drop_set;
+    for (int i = 0; i < static_cast<int>(last_marginalization_parameter_blocks.size()); i++) {
+      if (last_marginalization_parameter_blocks[i] == para_Pose[0] ||
+          last_marginalization_parameter_blocks[i] == para_SpeedBias[0])
+        drop_set.push_back(i);
+    }
+    // construct new marginlization_factor
+    MarginalizationFactor* marginalization_factor =
+        new MarginalizationFactor(last_marginalization_info);
+    ResidualBlockInfo* residual_block_info = new ResidualBlockInfo(
+        marginalization_factor, NULL, last_marginalization_parameter_blocks, drop_set);
+
+    marginalization_info->addResidualBlockInfo(residual_block_info);
+  }
+
+  {
+    int feature_index = -1;
+    for (auto& it_per_id : f_manager.feature) {
+      it_per_id.used_num = it_per_id.feature_per_frame.size();
+      if ((it_per_id.used_num < 2 || it_per_id.start_frame + 2 >= frame_count))
+        continue;
+
+      ++feature_index;
+
+      int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
+      if (imu_i != 0)
+        continue;
+
+      Vector3d pts_i = it_per_id.feature_per_frame[0].point;
+
+      for (auto& it_per_frame : it_per_id.feature_per_frame) {
+        imu_j++;
+        if (imu_i == imu_j)
+          continue;
+
+        Vector3d pts_j = it_per_frame.point;
+        if (ESTIMATE_TD) {
+          ProjectionTdFactor* f_td = new ProjectionTdFactor(
+              pts_i, pts_j, it_per_id.feature_per_frame[0].velocity, it_per_frame.velocity,
+              it_per_id.feature_per_frame[0].cur_td, it_per_frame.cur_td,
+              it_per_id.feature_per_frame[0].uv.y(), it_per_frame.uv.y());
+          ResidualBlockInfo* residual_block_info = new ResidualBlockInfo(
+              f_td, loss_function,
+              vector<double*>{para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0],
+                              para_Feature[feature_index], para_Td[0]},
+              vector<int>{0, 3});
+          marginalization_info->addResidualBlockInfo(residual_block_info);
+        } else {
+          ceres::CostFunction* f;
+          if (AUTOGRAD) {
+            f = new ceres::AutoDiffCostFunction<ProjectionFactorAuto, 2, 7, 7, 7, 1>(
+                new ProjectionFactorAuto(pts_i, pts_j, sqrt_info));
+          } else {
+            f = new ProjectionFactor(pts_i, pts_j);
+          }
+          ResidualBlockInfo* residual_block_info =
+              new ResidualBlockInfo(f, loss_function,
+                                    vector<double*>{para_Pose[imu_i], para_Pose[imu_j],
+                                                    para_Ex_Pose[0], para_Feature[feature_index]},
+                                    vector<int>{0, 3});
+          marginalization_info->addResidualBlockInfo(residual_block_info);
+        }
+      }
+    }
+  }
+
+  {
+    if (USE_IMU && pre_integrations[1]->sum_dt < 10.0) {
+      IMUFactor* imu_factor = new IMUFactor(pre_integrations[1]);
+      ResidualBlockInfo* residual_block_info = new ResidualBlockInfo(
+          imu_factor, NULL,
+          vector<double*>{para_Pose[0], para_SpeedBias[0], para_Pose[1], para_SpeedBias[1]},
+          vector<int>{0, 1});
+      marginalization_info->addResidualBlockInfo(residual_block_info);
+    }
+  }
+  // ROS_INFO("preparation of margin blocks %f ms", t_margin_prep.toc());
+
+  Timer::start("old_margin_preMarginal");
+  TicToc t_pre_margin;
+  marginalization_info->preMarginalize();
+  // ROS_INFO("pre marginalization %f ms", t_pre_margin.toc());
+  Timer::stop("old_margin_preMarginal");
+
+  Timer::start("old_margin_Marginal");
+  TicToc t_margin;
+  marginalization_info->marginalize();
+  // ROS_INFO("marginalization %f ms", t_margin.toc());
+  Timer::stop("old_margin_Marginal");
+
+  TicToc t_margin_finish;
+  std::unordered_map<long, double*> addr_shift;
+  for (int i = 1; i <= frame_count; i++) {
+    addr_shift[reinterpret_cast<long>(para_Pose[i])] = para_Pose[i - 1];
+    if (USE_IMU) {
+      addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i - 1];
+    }
+  }
+  for (int i = 0; i < NUM_OF_CAM; i++)
+    addr_shift[reinterpret_cast<long>(para_Ex_Pose[i])] = para_Ex_Pose[i];
+  if (ESTIMATE_TD) {
+    addr_shift[reinterpret_cast<long>(para_Td[0])] = para_Td[0];
+  }
+  vector<double*> parameter_blocks = marginalization_info->getParameterBlocks(addr_shift);
+
+  if (last_marginalization_info)
+    delete last_marginalization_info;
+  last_marginalization_info = marginalization_info;
+  last_marginalization_parameter_blocks = parameter_blocks;
+  // ROS_INFO("finish of margin blocks %f ms", t_margin_finish.toc());
+  Timer::stop("old_margin_solving");
 }
 
 void Estimator::slideWindow() {
@@ -1041,35 +1060,35 @@ void Estimator::slideWindow() {
     }
   } else {
     // if (frame_count == WINDOW_SIZE) {
-      for (unsigned int i = 0; i < dt_buf[frame_count].size(); i++) {
-        double tmp_dt = dt_buf[frame_count][i];
-        Vector3d tmp_linear_acceleration = linear_acceleration_buf[frame_count][i];
-        Vector3d tmp_angular_velocity = angular_velocity_buf[frame_count][i];
+    for (unsigned int i = 0; i < dt_buf[frame_count].size(); i++) {
+      double tmp_dt = dt_buf[frame_count][i];
+      Vector3d tmp_linear_acceleration = linear_acceleration_buf[frame_count][i];
+      Vector3d tmp_angular_velocity = angular_velocity_buf[frame_count][i];
 
-        pre_integrations[frame_count - 1]->push_back(tmp_dt, tmp_linear_acceleration,
-                                                     tmp_angular_velocity);
+      pre_integrations[frame_count - 1]->push_back(tmp_dt, tmp_linear_acceleration,
+                                                   tmp_angular_velocity);
 
-        dt_buf[frame_count - 1].push_back(tmp_dt);
-        linear_acceleration_buf[frame_count - 1].push_back(tmp_linear_acceleration);
-        angular_velocity_buf[frame_count - 1].push_back(tmp_angular_velocity);
-      }
+      dt_buf[frame_count - 1].push_back(tmp_dt);
+      linear_acceleration_buf[frame_count - 1].push_back(tmp_linear_acceleration);
+      angular_velocity_buf[frame_count - 1].push_back(tmp_angular_velocity);
+    }
 
-      Headers[frame_count - 1] = Headers[frame_count];
-      Ps[frame_count - 1] = Ps[frame_count];
-      Vs[frame_count - 1] = Vs[frame_count];
-      Rs[frame_count - 1] = Rs[frame_count];
-      Bas[frame_count - 1] = Bas[frame_count];
-      Bgs[frame_count - 1] = Bgs[frame_count];
+    Headers[frame_count - 1] = Headers[frame_count];
+    Ps[frame_count - 1] = Ps[frame_count];
+    Vs[frame_count - 1] = Vs[frame_count];
+    Rs[frame_count - 1] = Rs[frame_count];
+    Bas[frame_count - 1] = Bas[frame_count];
+    Bgs[frame_count - 1] = Bgs[frame_count];
 
-      delete pre_integrations[frame_count];
-      pre_integrations[frame_count] =
-          new IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
+    delete pre_integrations[frame_count];
+    pre_integrations[frame_count] =
+        new IntegrationBase{acc_0, gyr_0, Bas[frame_count], Bgs[frame_count]};
 
-      dt_buf[frame_count].clear();
-      linear_acceleration_buf[frame_count].clear();
-      angular_velocity_buf[frame_count].clear();
+    dt_buf[frame_count].clear();
+    linear_acceleration_buf[frame_count].clear();
+    angular_velocity_buf[frame_count].clear();
 
-      slideWindowNew();
+    slideWindowNew();
     // }
   }
 }
