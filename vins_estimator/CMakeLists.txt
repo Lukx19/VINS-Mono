@@ -6,7 +6,7 @@ set(CMAKE_BUILD_TYPE "Release")
 #-DEIGEN_USE_MKL_ALL")
 #  -Wall -Wextra -ffast-math -O3 -march=native -fopenmp -g
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11 -O3  -fPIC")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -Wextra -ffast-math")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -std=c++11 -Wextra -ffast-math -march=native")
 if(${CMAKE_HOST_SYSTEM_PROCESSOR} MATCHES "arm*")
   message(STATUS "ARM processor detected, will attempt to use NEON.")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mfpu=neon")
@@ -35,6 +35,7 @@ find_package(Eigen3)
 include_directories(
   ${catkin_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
+  ${CERES_INCLUDE_DIRS}
 )
 
 catkin_package()

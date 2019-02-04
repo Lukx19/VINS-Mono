@@ -8,7 +8,7 @@
     <arg name="record_file" default = "$(arg vins_path)/recordings.csv" />
     <arg name="play_bag_flags" default = "-r 0.5 -d 2 -s 10" />
 
-    <!-- SVO -->
+    <!-- OKVIS -->
     <node name="okvis_node" pkg="okvis_ros" type="okvis_node_synchronous" required="true" output="screen" args="$(arg config_path) $(arg dataset_folder)/$(arg sequence_name).bag">
         <param name="mesh_file" value="firefly.dae" />
         <param name="camera_topic_0" value="/cam0/image_raw" />

@@ -16,7 +16,7 @@ rosbag_flags=""
 experiment_file=""
 current_dir=$(pwd -P)
 
-while getopts "h?so:d:c:r:a:e:" opt; do
+while getopts "h?so:d:c:r:a:e:f:" opt; do
     case "$opt" in
     h|\?)
         echo "-d "V1_01_easy V1_02_medium V1_03_difficult"  -o "output_path"  -s[will not run algorithm only statistics]  -c "path to config file"  -r '-s 10 --clock'  -a VINS -e "experiment_file_path" "
@@ -35,6 +35,8 @@ while getopts "h?so:d:c:r:a:e:" opt; do
     a) algorithm=$OPTARG
         ;;
     e) experiment_file=$(realpath $OPTARG)
+        ;;
+    f) datasets_folder=$(realpath $OPTARG)
         ;;
     esac
 done
@@ -68,7 +70,7 @@ do
     echo "Evaluate dataset ${dataset}"
     ground_truth="${current_dir}/../benchmark_publisher/config/$dataset/data.csv"
     recording_file="$output_path/recording_${dataset}.csv"
-    roslaunch_args="record_file:=${recording_file} sequence_name:=${dataset}"
+    roslaunch_args="dataset_folder:=${datasets_folder} record_file:=${recording_file} sequence_name:=${dataset}"
     if [ ! -z "$config_file" ]
     then
         roslaunch_args=${roslaunch_args}" config_path:=${config_file}"
