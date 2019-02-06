@@ -120,8 +120,8 @@ bool FeatureManager::shouldBeKeyframe(int frame_count) const {
     // a lot of new features with only very limited overlap.
     return true;
   } else {
-    ROS_DEBUG("parallax_sum: %lf, parallax_num: %d", parallax_sum, parallax_num);
-    ROS_DEBUG("current parallax: %lf", parallax_sum / parallax_num * FOCAL_LENGTH);
+    ROS_INFO("parallax_sum: %lf, parallax_num: %d", parallax_sum, parallax_num);
+    ROS_INFO("current parallax: %lf", parallax_sum / parallax_num * FOCAL_LENGTH);
     return parallax_sum / parallax_num >= MIN_PARALLAX;
   }
 }

@@ -3,6 +3,7 @@
 #include "../utility/utility.h"
 #include <chrono>
 #include<Eigen/SparseCholesky>
+#include<Eigen/SparseLU>
 
 void ResidualBlockInfo::Evaluate()
 {
@@ -305,8 +306,9 @@ void MarginalizationInfo::marginalize()
     // TODO
     if(USE_SPARSE_MARGINALIZATION){
         TicToc t_sparse;
+        Eigen::MatrixXd Amm = 0.5 * (A.block(0, 0, m, m) + A.block(0, 0, m, m).transpose());
         Eigen::SimplicialLDLT<Eigen::SparseMatrix<double> > solver;
-        solver.compute(A.block(0, 0, m, m).sparseView());
+        solver.compute(Amm.sparseView());
         Eigen::SparseMatrix<double> I(m,m);
         I.setIdentity();
         Amm_inv = Eigen::MatrixXd(solver.solve(I));
@@ -337,16 +339,24 @@ void MarginalizationInfo::marginalize()
     // Timer::start("marginalization_lin_system_solve2");
     // Timer::start("marginalization_lin_system_solveAb");
     TicToc t_solvingAb;
-    // auto  bmm = b.segment(0, m);
-    // auto  Amr = A.block(0, m, m, n);
-    // auto  Arm = A.block(m, 0, n, m);
-    // auto  Arr = A.block(m, m, n, n);
-    // auto  brr = b.segment(m, n);
-    Eigen::MatrixXd A_left = A.block(m, 0, n, m) * Amm_inv;
-    Eigen::MatrixXd A_temp = A_left * A.block(0, m, m, n);
-    Eigen::MatrixXd A_mod = A.block(m, m, n, n) - A_temp;
-    Eigen::VectorXd b_temp =  A_left * b.segment(0, m);
-    Eigen::VectorXd b_mod = b.segment(m, n) - b_temp;
+    Eigen::MatrixXd A_mod;
+    Eigen::VectorXd b_mod;
+    if (OLD_MARG_SUMMING) {
+        Eigen::VectorXd bmm = b.segment(0, m);
+        Eigen::MatrixXd Amr = A.block(0, m, m, n);
+        Eigen::MatrixXd Arm = A.block(m, 0, n, m);
+        Eigen::MatrixXd Arr = A.block(m, m, n, n);
+        Eigen::VectorXd brr = b.segment(m, n);
+        A_mod = Arr - (Arm * Amm_inv * Amr);
+        b_mod = brr - (Arm * Amm_inv * bmm);
+    } else {
+      Eigen::MatrixXd A_left = A.block(m, 0, n, m) * Amm_inv;
+      Eigen::MatrixXd A_temp = A_left * A.block(0, m, m, n);
+      A_mod = A.block(m, m, n, n) - A_temp;
+      Eigen::VectorXd b_temp = A_left * b.segment(0, m);
+      b_mod = b.segment(m, n) - b_temp;
+    }
+
     // Timer::stop("marginalization_lin_system_solveAb");
     // ROS_INFO("solving up Ab costs %f ms", t_solvingAb.toc());
 

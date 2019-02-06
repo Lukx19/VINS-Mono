@@ -43,6 +43,7 @@ extern bool USE_SPARSE_MARGINALIZATION;
 extern size_t INIT_WINDOW_SIZE;
 extern bool RGBD_CAM;
 extern bool USE_IMU;
+extern bool OLD_MARG_SUMMING;
 
 void readParameters(ros::NodeHandle& n);
 

@@ -87,6 +87,7 @@ motion_vio: 0
 # use automatic difrentiation in optimization
 autograd: 0
 sparse_marginalization: 1
+old_marginalization_sum: 0
 init_window_size: 10
 
 #rolling shutter parameters

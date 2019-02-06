@@ -28,6 +28,7 @@ bool USE_SPARSE_MARGINALIZATION;
 size_t INIT_WINDOW_SIZE;
 bool RGBD_CAM;
 bool USE_IMU;
+bool OLD_MARG_SUMMING;
 
 template <typename T>
 T readParam(ros::NodeHandle& n, std::string name) {
@@ -108,6 +109,7 @@ void readParameters(ros::NodeHandle& n) {
   INIT_WINDOW_SIZE = static_cast<size_t>(readParam<int>(fsSettings["init_window_size"], WINDOW_SIZE));
   RGBD_CAM = readParam<int>(fsSettings["rgbd_camera"], 0);
   USE_IMU = readParam<int>(fsSettings["use_imu"], 1);
+  OLD_MARG_SUMMING =  readParam<int>(fsSettings["old_marginalization_sum"], 0);
 
   INIT_DEPTH = 5.0;
   BIAS_ACC_THRESHOLD = 0.1;
