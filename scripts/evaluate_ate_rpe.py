@@ -208,7 +208,7 @@ def plot_traj(ax,stamps,traj,style,color,label):
     if len(x)>0:
         ax.plot(x,y,style,color=color,label=label)
 
-def plot_translation_error(timestamps, translation_error, results_dir,name_prefix=""):
+def plot_translation_error(timestamps, translation_error, results_dir,name_postfix="",name_prefix=""):
     fig = plt.figure(figsize=(8, 4))
     ax = fig.add_subplot(111, xlabel='time [s]', ylabel='position drift [mm]', xlim=[0,timestamps[-1]-timestamps[0]+4])
     ax.plot(timestamps-timestamps[0], translation_error[:,0]*1000, 'r-', label='x')
@@ -218,9 +218,9 @@ def plot_translation_error(timestamps, translation_error, results_dir,name_prefi
        ncol=3, mode="expand", borderaxespad=0.2)
     # ax.legend()
     fig.tight_layout()
-    fig.savefig(results_dir+'/translation_error_'+name_prefix+'.png',bbox_extra_artists=(lgd,), bbox_inches='tight')
+    fig.savefig(results_dir+'/'+name_prefix+'_translation_error_'+name_postfix+'.png',bbox_extra_artists=(lgd,), bbox_inches='tight')
 
-def plot_rotation_error(timestamps, rotation_error, results_dir,name_prefix=""):
+def plot_rotation_error(timestamps, rotation_error, results_dir,name_postfix="",name_prefix=""):
     fig = plt.figure(figsize=(8, 4))
     # , xlim=[0,timestamps[-1]-timestamps[0]+9]
     ax = fig.add_subplot(111, xlabel='time [s]', ylabel='orientation drift [rad]', ylim=[-0.3,0.3])
@@ -231,7 +231,7 @@ def plot_rotation_error(timestamps, rotation_error, results_dir,name_prefix=""):
        ncol=3, mode="expand", borderaxespad=0.2)
     # ax.legend()
     fig.tight_layout()
-    fig.savefig(results_dir+'/orientation_error_'+name_prefix+'.png', bbox_extra_artists=(lgd,), bbox_inches='tight')
+    fig.savefig(results_dir+'/'+name_prefix+'_orientation_error_'+name_postfix+'.png', bbox_extra_artists=(lgd,), bbox_inches='tight')
 
 def rpe_trajectory(gt_trajectory, es_trajectory,param_fixed_delta=False,param_delta=1.00,param_delta_unit="s"):
     gt = [(key, evaluate_rpe.transform44(list(itertools.chain.from_iterable([[key], gt_trajectory[key]])))) for key in gt_trajectory]
@@ -323,14 +323,15 @@ if __name__=="__main__":
     parser.add_argument('--save_associations', action='store_true' ,help='save associated files.')
     parser.add_argument('--plot', action='store_true', help='plot the first and the aligned second trajectory to an image')
     parser.add_argument('--results_dir', help='Existing directory where to save all outputs from this graph')
-    parser.add_argument('--prefix', help='Name prefix used in all outputted filenames', default="")
+    parser.add_argument('--postfix', help='Name postfix used in all outputted filenames', default="")
+    parser.add_argument('--prefix', help='Name prefix used in all outputted filenames', default="1")
     parser.add_argument('--verbose', help='print all evaluation data (otherwise, only the RMSE absolute translational error in meters after alignment will be printed)', action='store_true')
     args = parser.parse_args()
 
     scale = args.scale
     first_list = read_file_list(args.first_file)
     second_list = read_file_list(args.second_file)
-    assoc_match_filename = args.results_dir+"/match_associated_"+args.prefix+".csv"
+    assoc_match_filename = args.results_dir+"/"+args.prefix+"_match_associated_"+args.postfix+".csv"
     if os.path.exists(assoc_match_filename):
         # load associations
        matches = read_file_list_raw(assoc_match_filename)
@@ -378,7 +379,7 @@ if __name__=="__main__":
     results["RPE_orientation"] = metrics(rot_rpe_error * to_deg)
     results["scale"] = scale
 
-    results_json_file = args.results_dir+"/results."+args.prefix+".json"
+    results_json_file = args.results_dir+"/"+args.prefix+"_results."+args.postfix+".json"
     with open(results_json_file, "w") as f:
         f.write(json.dumps(results))
 
@@ -402,10 +403,10 @@ if __name__=="__main__":
     if args.plot:
 
         # plot position error (drift)
-        # plot_translation_error(t_es, trans_error, args.results_dir,args.prefix)
+        # plot_translation_error(t_es, trans_error, args.results_dir,args.postfix)
 
         # # plot orientation error (drift)
-        # plot_rotation_error(t_es, orient_error, args.results_dir,args.prefix)
+        # plot_rotation_error(t_es, orient_error, args.results_dir,args.postfix)
         left, width = .25, .5
         bottom, height = .25, .5
         fig = plt.figure()
@@ -425,6 +426,6 @@ if __name__=="__main__":
 
         ax.set_xlabel('x [m]')
         ax.set_ylabel('y [m]')
-        plt.savefig( args.results_dir+"/trajectory_"+args.prefix+".png",dpi=90)
+        plt.savefig( args.results_dir+"/"+args.prefix+"_trajectory_"+args.postfix+".png",dpi=90)
 
 
