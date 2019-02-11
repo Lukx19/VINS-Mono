@@ -77,7 +77,7 @@ def genMetricsTable2(experiment_folder,result_dir):
             for df_field in ["rmse"]:
                 value = float(json_data[category][df_field])
                 if value > 100 or scale < 0.8:
-                    value = None
+                    value = np.nan
                 table.append([convert(dataset), convert(experiment), round_n, category, df_field, value])
 
     table = pd.DataFrame(table, columns=headers)
