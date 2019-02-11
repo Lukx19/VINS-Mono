@@ -33,7 +33,7 @@ void init_callback(const std_msgs::BoolConstPtr& init_msg) {
     if (init_msg->data) {
       tracker.useInitTracking();
     } else {
-      tracker.stopInitTracking();
+      tracker.useStandardTracking();
     }
   }
 }

@@ -26,6 +26,7 @@ bool EDGE_PREFERENCE;
 bool ENABLE_F_REJECTION;
 bool RGBD_CAM;
 int INIT_MAX_CNT;
+bool USE_INIT_TRACKING;
 std::string ALG;
 
 void readParameters(ros::NodeHandle& n) {
@@ -68,6 +69,7 @@ void readParameters(ros::NodeHandle& n) {
   ENABLE_F_REJECTION = readParam<int>(fsSettings["fundamental_matrix_rejection"], 1);
   RGBD_CAM = readParam<int>(fsSettings["rgbd_camera"], 0);
   INIT_MAX_CNT = readParam<int>(fsSettings["init_max_cnt"], MAX_CNT);
+  USE_INIT_TRACKING = readParam<int>(fsSettings["use_init_tracking"], 0);
   if (FREQ == 0)
     FREQ = 100;
 

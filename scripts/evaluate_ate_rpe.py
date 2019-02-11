@@ -234,9 +234,10 @@ def plot_rotation_error(timestamps, rotation_error, results_dir,name_postfix="",
     fig.savefig(results_dir+'/'+name_prefix+'_orientation_error_'+name_postfix+'.png', bbox_extra_artists=(lgd,), bbox_inches='tight')
 
 def rpe_trajectory(gt_trajectory, es_trajectory,param_fixed_delta=False,param_delta=1.00,param_delta_unit="s"):
-    gt = [(key, evaluate_rpe.transform44(list(itertools.chain.from_iterable([[key], gt_trajectory[key]])))) for key in gt_trajectory]
+    gt = [(key, evaluate_rpe.transform44(list(itertools.chain.from_iterable([[key], gt_trajectory[key][0:3],[gt_trajectory[key][6]],gt_trajectory[key][3:6]])))) for key in gt_trajectory]
     gt = dict(gt)
-    es = [(key, evaluate_rpe.transform44(list(itertools.chain.from_iterable([[key], es_trajectory[key]])))) for key in es_trajectory]
+
+    es = [(key, evaluate_rpe.transform44(list(itertools.chain.from_iterable([[key], es_trajectory[key][0:3],[es_trajectory[key][6]],es_trajectory[key][3:6]])))) for key in es_trajectory]
     es=dict(es)
     result = np.array(evaluate_rpe.evaluate_trajectory(gt, es, param_fixed_delta=param_fixed_delta,param_delta=param_delta,param_delta_unit=param_delta_unit))
     stamps_rpe = result[:,0]
@@ -349,7 +350,7 @@ if __name__=="__main__":
     gt_matches =dict([(a,first_list[a]) for a, b in matches])
     es_matches = dict([(b, second_list[b]) for a, b in matches])
 #  --------------RPE Calculation
-    stamps_rpe,trans_rpe_error ,rot_rpe_error = rpe_trajectory(gt_matches,es_matches)
+    stamps_rpe,trans_rpe_error ,rot_rpe_error = rpe_trajectory(gt_matches,es_matches,param_fixed_delta=True,param_delta=5,param_delta_unit='m')
 #  --------------ATE Calculation
     t_gt = np.array([float(a) for a, b in matches])
     q_gt = normalize_quaternion(np.array([[float(value) for value in first_list[a][3:7]] for a, b in matches]))
@@ -359,15 +360,15 @@ if __name__=="__main__":
     q_es = normalize_quaternion(np.array([[float(value) for value in second_list[b][3:7]] for a, b in matches]))
     p_es = np.array([[float(value) for value in second_list[b][0:3]] for a,b in matches])
 
-    print(p_es)
+    # print(p_es)
     start_time = min(t_es[0], t_gt[0])
     t_es -= start_time
     t_gt -= start_time
     p_es_aligned, trans_abs_error, rot_abs_error,scale = abs_trajectory(q_gt, p_gt, q_es, p_es)
-    print(trans_rpe_error)
-    print(trans_abs_error)
-    print(rot_rpe_error)
-    print(rot_abs_error)
+    # print(trans_rpe_error)
+    # print(trans_abs_error)
+    # print(rot_rpe_error)
+    # print(rot_abs_error)
 
 #    --------------------------------------------------
     to_deg = 180.0 / np.pi
@@ -378,6 +379,8 @@ if __name__=="__main__":
     results["RPE_translation"] = metrics(trans_rpe_error * to_m)
     results["RPE_orientation"] = metrics(rot_rpe_error * to_deg)
     results["scale"] = scale
+    results["RPE_trans_err"] = list(trans_rpe_error)
+    results["RPE_rot_err"] = list(rot_rpe_error)
 
     results_json_file = args.results_dir+"/"+args.prefix+"_results."+args.postfix+".json"
     with open(results_json_file, "w") as f:

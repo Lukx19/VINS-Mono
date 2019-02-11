@@ -54,7 +54,7 @@ public:
   FeatureTracker();
 
   void useInitTracking();
-  void stopInitTracking();
+  void useStandardTracking();
 
   void printStatistics() const;
 
@@ -108,6 +108,7 @@ private:
   int max_num_features_;
   int max_num_features_region_;
   bool init_tracking_;
+  std::string feature_type_;
 
   void addPoints(const std::vector<cv::Point2f>& points, int region_id = 0);
   void addPoints(const std::vector<cv::KeyPoint>& points, int region_id = 0);

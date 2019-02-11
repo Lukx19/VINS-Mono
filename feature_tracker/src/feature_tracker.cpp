@@ -140,19 +140,25 @@ FeatureTracker::FeatureTracker() {
   std::cout << "region_pts: " << region_pts.size() << std::endl;
   regional_kp_.resize(BLOCK_PER_ROW * BLOCK_PER_COL, {});
   region_threshold_.resize(BLOCK_PER_ROW * BLOCK_PER_COL, FAST_THRESHOLD);
-  useInitTracking();
+  if(USE_INIT_TRACKING){
+    useInitTracking();
+  }else{
+    useStandardTracking();
+  }
 }
 
 void FeatureTracker::useInitTracking() {
   max_num_features_ = static_cast<size_t>(INIT_MAX_CNT);
   init_tracking_ = true;
+  feature_type_ = "GoodFeatures";
   max_num_features_region_ = (max_num_features_ / (BLOCK_PER_ROW * BLOCK_PER_COL));
 }
 
-void FeatureTracker::stopInitTracking() {
+void FeatureTracker::useStandardTracking() {
   max_num_features_ = static_cast<size_t>(MAX_CNT);
   init_tracking_ = false;
   max_num_features_region_ = MAX_CNT_PER_BLOCK;
+  feature_type_ = ALG;
 }
 void FeatureTracker::printStatistics() const {
   std::cout << "\n" + Timer::toString() << std::endl;
@@ -274,14 +280,14 @@ void FeatureTracker::prepareForPublish() {
 
   ROS_DEBUG("detect feature begins");
   TicToc t_t;
-  if (ALG == "GoodFeatures") {
+  if (feature_type_ == "GoodFeatures") {
     Timer::start("good_features");
     cv::Ptr<cv::GFTTDetector> gf = cv::GFTTDetector::create(n_max_cnt, 0.01, MIN_DIST);
     gf->detect(forw_img, feature_pts, mask);
     // cv::goodFeaturesToTrack(forw_img, n_pts, n_max_cnt, 0.01, MIN_DIST, mask);
     addPoints(feature_pts);
     Timer::stop("good_features");
-  } else if (ALG == "FAST") {
+  } else if (feature_type_ == "FAST") {
     Timer::start("fast_features");
     cv::Ptr<cv::FastFeatureDetector> ff = cv::FastFeatureDetector::create(FAST_THRESHOLD, false);
     ff->detect(forw_img, feature_pts, mask);
@@ -296,7 +302,7 @@ void FeatureTracker::prepareForPublish() {
 
     addPoints(feature_pts);
     Timer::stop("fast_features");
-  } else if (ALG == "AGAST") {
+  } else if (feature_type_ == "AGAST") {
     Timer::start("AGAST_features");
     cv::Ptr<cv::AgastFeatureDetector> agf = cv::AgastFeatureDetector::create(
         FAST_THRESHOLD, true, cv::AgastFeatureDetector::AGAST_7_12d);
@@ -313,7 +319,7 @@ void FeatureTracker::prepareForPublish() {
     // cv::KeyPointsFilter::retainBest(feature_pts, n_max_cnt);
     addPoints(feature_pts);
     Timer::stop("AGAST_features");
-  } else if (ALG == "FASTBlock" || ALG == "GoodBlock" || "AGASTBlock" || "AGASTBlockOriginal") {
+  } else if (feature_type_ == "FASTBlock" || feature_type_ == "GoodBlock" || feature_type_=="AGASTBlock") {
     int window_rows = forw_img.rows / BLOCK_PER_ROW;
     int window_cols = forw_img.cols / BLOCK_PER_COL;
     size_t region_id = 0;
@@ -336,8 +342,8 @@ void FeatureTracker::prepareForPublish() {
                      MAX_CNT_PER_BLOCK);
           }
           cv::Rect window(col, row, window_cols, window_rows);
-          if (ALG == "FASTBlock" || ALG == "AGASTBlock") {
-            if (ALG == "AGASTBlock") {
+          if (feature_type_ == "FASTBlock" || feature_type_ == "AGASTBlock") {
+            if (feature_type_ == "AGASTBlock") {
               cv::Ptr<cv::AgastFeatureDetector> agf = cv::AgastFeatureDetector::create(
                   region_threshold_[region_id], true, cv::AgastFeatureDetector::AGAST_7_12d);
               agf->detect(forw_img(window), feature_pts, mask(window));

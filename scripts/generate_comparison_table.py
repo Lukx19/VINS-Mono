@@ -137,7 +137,7 @@ def genPerfTable(experiment_folder, result_dir):
 #     # print(table)
 #     table.transpose().to_csv(result_dir+"/time_stats.csv")
 
-def barplot(table,query, ylabel, output_file=None):
+def barplot(table,query, ylabel,ylimit=None,title=None, output_file=None):
     if query:
         selected_table = table.query(query)
     else:
@@ -149,10 +149,20 @@ def barplot(table,query, ylabel, output_file=None):
                  data=selected_table, estimator=np.mean, saturation=0.7)
     sns.despine(ax=ax,left=True)
     ax.set_xticklabels(ax.get_xticklabels(),rotation=30)
-
+    ax.legend(frameon=True, loc='upper center', ncol=5)
     # plt.title('My title')
     ax.set_xlabel('Datasets')
     ax.set_ylabel(ylabel)
+    if title:
+        ax.set_title(ylabel)
+    # print(np.max(selected_table.loc[:,'value'].max()))
+    # sns.plt.ylim(0, selected_table.loc[:,'value'].max()*1.5)
+
+    # ax.set(ylim=(0, selected_table.loc[:,'value'].max()*2.5))
+    if ylimit:
+        ax.set_ylim(0, ylimit)
+    else:
+        ax.set_ylim(0,selected_table.loc[:,'value'].max()*1.2)
     if output_file is None:
         plt.show()
     else:
