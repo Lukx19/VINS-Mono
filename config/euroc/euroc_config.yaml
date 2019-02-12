@@ -42,9 +42,9 @@ extrinsicTranslation: !!opencv-matrix
    data: [-0.0216401454975,-0.064676986768, 0.00981073058949]
 
 #feature traker paprameters
-max_cnt: 100            # max feature number in feature tracking
-init_max_cnt: 100       # max feature number at the initialization phase
-use_init_tracking: 1    # use special tracking while initializing estimator (it uses Good features and ini_max_cnt features)
+max_cnt: 80            # max feature number in feature tracking
+init_max_cnt: 80       # max feature number at the initialization phase
+use_init_tracking: 0    # use special tracking while initializing estimator (it uses Good features and ini_max_cnt features)
 min_dist: 30            # min distance between two features in pixels
 freq: 10                # frequence (Hz) of publish tracking result. At least 10Hz for good estimation. If set 0, the frequence will be same as raw image
 fundamental_matrix_rejection: 1
@@ -53,20 +53,21 @@ F_threshold: 1.0        # ransac threshold (pixel)
 show_track: 1           # publish tracking image as topic
 equalize: 1             # if image is too dark or light, trun on equalize to find enough features
 fisheye: 0              # if using fisheye, trun on it. A circle mask will be loaded to remove edge noisy points
-blocks_per_row: 7
-blocks_per_col: 4
-max_features_per_block: 4
+blocks_per_row: 2
+blocks_per_col: 2
+max_features_per_block: 20
 # FASTBlock,GoodBlock, GoodFeatures, FAST, AGASTBlock, AGASTBlockOriginal, AGAST
 algorithm: AGAST
-adaptive_threshold: 1  # only for blocked algorithm
-fast_threshold: 30
-strong_edge_keypoint_preference: 1
+adaptive_threshold: 0  # only for blocked algorithm
+fast_threshold: 25
+strong_edge_keypoint_preference: 0
 #optimization parameters
 max_solver_time: 0.04  # max solver itration time (ms), to guarantee real time
-max_num_iterations: 8   # max solver itrations, to guarantee real time
+max_num_iterations: 10   # max solver itrations, to guarantee real time
 keyframe_parallax: 10.0 # keyframe selection threshold (pixel)
 
 #imu parameters       The more accurate parameters you provide, the better performance
+use_imu: 1
 acc_n: 0.08          # accelerometer measurement noise standard deviation. #0.2   0.04
 gyr_n: 0.004         # gyroscope measurement noise standard deviation.     #0.05  0.004
 acc_w: 0.00004         # accelerometer bias random work noise standard deviation.  #0.02

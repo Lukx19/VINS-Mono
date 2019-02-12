@@ -99,15 +99,16 @@ void Estimator::processIMU(double dt, const Vector3d& linear_acceleration,
     dt_buf[frame_count].push_back(dt);
     linear_acceleration_buf[frame_count].push_back(linear_acceleration);
     angular_velocity_buf[frame_count].push_back(angular_velocity);
-
-    int j = frame_count;
-    Vector3d un_acc_0 = Rs[j] * (acc_0 - Bas[j]) - g;
-    Vector3d un_gyr = 0.5 * (gyr_0 + angular_velocity) - Bgs[j];
-    Rs[j] *= Utility::deltaQ(un_gyr * dt).toRotationMatrix();
-    Vector3d un_acc_1 = Rs[j] * (linear_acceleration - Bas[j]) - g;
-    Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
-    Ps[j] += dt * Vs[j] + 0.5 * dt * dt * un_acc;
-    Vs[j] += dt * un_acc;
+    if(USE_IMU){
+      int j = frame_count;
+      Vector3d un_acc_0 = Rs[j] * (acc_0 - Bas[j]) - g;
+      Vector3d un_gyr = 0.5 * (gyr_0 + angular_velocity) - Bgs[j];
+      Rs[j] *= Utility::deltaQ(un_gyr * dt).toRotationMatrix();
+      Vector3d un_acc_1 = Rs[j] * (linear_acceleration - Bas[j]) - g;
+      Vector3d un_acc = 0.5 * (un_acc_0 + un_acc_1);
+      Ps[j] += dt * Vs[j] + 0.5 * dt * dt * un_acc;
+      Vs[j] += dt * un_acc;
+    }
   }
   acc_0 = linear_acceleration;
   gyr_0 = angular_velocity;
@@ -345,16 +346,16 @@ bool Estimator::initialStructure() {
     frame_it->second.R = R_pnp * RIC[0].transpose();
     frame_it->second.T = T_pnp;
   }
-  if (USE_IMU) {
+  // if (USE_IMU) {
     if (visualInitialAlign())
       return true;
     else {
       ROS_INFO("misalign visual structure with IMU");
       return false;
     }
-  } else {
-    return true;
-  }
+  // } else {
+    // return true;
+  // }
 }
 
 bool Estimator::visualInitialAlign() {
@@ -615,24 +616,24 @@ bool Estimator::failureDetection() {
       return true;
   }
   */
-  Vector3d tmp_P = Ps[frame_count];
-  if ((tmp_P - last_P).norm() > 5) {
-    ROS_WARN(" big translation");
-    return true;
-  }
-  if (abs(tmp_P.z() - last_P.z()) > 1) {
-    ROS_INFO(" big z translation");
-    return true;
-  }
-  Matrix3d tmp_R = Rs[frame_count];
-  Matrix3d delta_R = tmp_R.transpose() * last_R;
-  Quaterniond delta_Q(delta_R);
-  double delta_angle;
-  delta_angle = acos(delta_Q.w()) * 2.0 / 3.14 * 180.0;
-  if (delta_angle > 50) {
-    ROS_WARN(" big delta_angle ");
-    // return true;
-  }
+  // Vector3d tmp_P = Ps[frame_count];
+  // if ((tmp_P - last_P).norm() > 5) {
+  //   ROS_WARN(" big translation");
+  //   return true;
+  // }
+  // if (abs(tmp_P.z() - last_P.z()) > 1) {
+  //   ROS_INFO(" big z translation");
+  //   return true;
+  // }
+  // Matrix3d tmp_R = Rs[frame_count];
+  // Matrix3d delta_R = tmp_R.transpose() * last_R;
+  // Quaterniond delta_Q(delta_R);
+  // double delta_angle;
+  // delta_angle = acos(delta_Q.w()) * 2.0 / 3.14 * 180.0;
+  // if (delta_angle > 50) {
+  //   ROS_WARN(" big delta_angle ");
+  //   // return true;
+  // }
   return false;
 }
 
@@ -650,11 +651,14 @@ void Estimator::optimization() {
     std::cout << visible[i] << ",";
     ceres::LocalParameterization* local_parameterization = new PoseLocalParameterization();
     problem.AddParameterBlock(para_Pose[i], SIZE_POSE, local_parameterization);
-    if (MOTION_VIO && i < frame_count && !visible[i]) {
-      problem.SetParameterBlockConstant(para_Pose[i]);
-    }
     if (USE_IMU) {
       problem.AddParameterBlock(para_SpeedBias[i], SIZE_SPEEDBIAS);
+    }
+    if (MOTION_VIO && i + 5 < frame_count) {
+      problem.SetParameterBlockConstant(para_Pose[i]);
+      if (USE_IMU) {
+        problem.SetParameterBlockConstant(para_SpeedBias[i]);
+      }
     }
   }
   std::cout << std::endl;
@@ -801,6 +805,7 @@ void Estimator::optimization() {
   ceres::Solve(options, &problem, &summary);
   Timer::stop("odometry_solving");
   ROS_DEBUG_STREAM(summary.FullReport());
+  ROS_INFO_STREAM(summary.BriefReport());
   ROS_DEBUG("Iterations : %d", static_cast<int>(summary.iterations.size()));
   ROS_DEBUG("solver costs: %f", t_solver.toc());
 

@@ -233,13 +233,13 @@ def plot_rotation_error(timestamps, rotation_error, results_dir,name_postfix="",
     fig.tight_layout()
     fig.savefig(results_dir+'/'+name_prefix+'_orientation_error_'+name_postfix+'.png', bbox_extra_artists=(lgd,), bbox_inches='tight')
 
-def rpe_trajectory(gt_trajectory, es_trajectory,param_fixed_delta=False,param_delta=1.00,param_delta_unit="s"):
+def rpe_trajectory(gt_trajectory, es_trajectory,param_fixed_delta=False,param_delta=1.00,param_delta_unit="s",scale = 1):
     gt = [(key, evaluate_rpe.transform44(list(itertools.chain.from_iterable([[key], gt_trajectory[key][0:3],[gt_trajectory[key][6]],gt_trajectory[key][3:6]])))) for key in gt_trajectory]
     gt = dict(gt)
 
     es = [(key, evaluate_rpe.transform44(list(itertools.chain.from_iterable([[key], es_trajectory[key][0:3],[es_trajectory[key][6]],es_trajectory[key][3:6]])))) for key in es_trajectory]
     es=dict(es)
-    result = np.array(evaluate_rpe.evaluate_trajectory(gt, es, param_fixed_delta=param_fixed_delta,param_delta=param_delta,param_delta_unit=param_delta_unit))
+    result = np.array(evaluate_rpe.evaluate_trajectory(gt, es, param_fixed_delta=param_fixed_delta,param_delta=param_delta,param_delta_unit=param_delta_unit,param_scale=scale))
     stamps_rpe = result[:,0]
     trans_rpe_error = result[:,4]
     rot_rpe_error = result[:, 5]
@@ -252,10 +252,9 @@ def abs_trajectory(q_gt,p_gt,q_es,p_es):
 
     rot,scale = align(np.matrix(p_es[0:init_frames,:].T), np.matrix(p_gt[0:init_frames,:].T))
 
-    trans = np.mean(p_gt, axis=0,keepdims=True).T - np.dot(rot, np.mean(p_es, axis=0,keepdims=True).T)
+    trans = np.mean(p_gt, axis=0,keepdims=True).T - np.dot(scale*rot, np.mean(p_es, axis=0,keepdims=True).T)
 
-    p_es_aligned = (np.dot( rot, p_es.T) + trans).T
-
+    p_es_aligned = (np.dot( scale*rot, p_es.T) + trans).T
 
     T_gt = rigid_body_transform(q_gt[0,:], p_gt[0,:])
     T_es = rigid_body_transform(q_es[0,:], p_es_aligned[0,:])
@@ -349,8 +348,7 @@ if __name__=="__main__":
 
     gt_matches =dict([(a,first_list[a]) for a, b in matches])
     es_matches = dict([(b, second_list[b]) for a, b in matches])
-#  --------------RPE Calculation
-    stamps_rpe,trans_rpe_error ,rot_rpe_error = rpe_trajectory(gt_matches,es_matches,param_fixed_delta=True,param_delta=5,param_delta_unit='m')
+
 #  --------------ATE Calculation
     t_gt = np.array([float(a) for a, b in matches])
     q_gt = normalize_quaternion(np.array([[float(value) for value in first_list[a][3:7]] for a, b in matches]))
@@ -371,6 +369,16 @@ if __name__=="__main__":
     # print(rot_abs_error)
 
 #    --------------------------------------------------
+    #  --------------RPE Calculation
+    stamps_rpe, trans_rpe_error, rot_rpe_error = (None,None,None)
+    try:
+        stamps_rpe, trans_rpe_error, rot_rpe_error = rpe_trajectory(gt_matches, es_matches, param_fixed_delta=True, param_delta=5, param_delta_unit='m',scale=scale)
+    except:
+        print("Unexpected error:", sys.exc_info()[0])
+        stamps_rpe = np.array([0])
+        trans_rpe_error = np.array([0])
+        rot_rpe_error = np.array([0])
+
     to_deg = 180.0 / np.pi
     to_m = 100
     results = {}
@@ -406,12 +414,13 @@ if __name__=="__main__":
     if args.plot:
 
         # plot position error (drift)
-        # plot_translation_error(t_es, trans_error, args.results_dir,args.postfix)
+        # print(trans_rpe_error)
+        # plot_translation_error(t_es, trans_rpe_error, args.results_dir,args.postfix,args.prefix)
 
-        # # plot orientation error (drift)
-        # plot_rotation_error(t_es, orient_error, args.results_dir,args.postfix)
-        left, width = .25, .5
-        bottom, height = .25, .5
+        # plot orientation error (drift)
+        # plot_rotation_error(t_es, rot_rpe_error, args.results_dir,args.postfix,args.prefix)
+        left, width = .05, .5
+        bottom, height = .05, .5
         fig = plt.figure()
         ax = fig.add_subplot(111)
         plot_traj(ax,t_gt,p_gt,'-',"black","ground truth")
